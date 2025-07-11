@@ -1,12 +1,13 @@
 
 import streamlit as st
 import pandas as pd
-import openai
+from openai import OpenAI
 import os
 
-# Set OpenAI API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set up OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Use updated cache syntax
 @st.cache_data
 def load_vocab():
     return pd.read_csv("vocab.csv")
@@ -40,24 +41,17 @@ if st.session_state.index < len(vocab):
             st.markdown(f"**Correct Definition:** {correct_definition}")
             st.markdown(f"**Example:** {example}")
 
-            # GPT explanation
             with st.spinner("Explaining with AI..."):
-               from openai import OpenAI
-
-client = OpenAI()
-
-response = client.chat.completions.create(
-    model="gpt-4",
-    messages=[
-        {"role": "system", "content": "You're a U.S. History tutor for middle and high school students."},
-        {"role": "user", "content": f"Explain the term '{term}' clearly, since the student got it wrong. Use examples and simple language."}
-    ],
-    max_tokens=150,
-    temperature=0.7
-)
-
-explanation = response.choices[0].message.content
-
+                response = client.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "You're a U.S. History tutor for middle and high school students."},
+                        {"role": "user", "content": f"Explain the term '{term}' clearly, since the student got it wrong. Use examples and simple language."}
+                    ],
+                    max_tokens=150,
+                    temperature=0.7
+                )
+                explanation = response.choices[0].message.content
                 st.info(f"💡 AI Explanation: {explanation}")
 else:
     st.balloons()
