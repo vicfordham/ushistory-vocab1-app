@@ -7,7 +7,7 @@ import os
 # Set OpenAI API key from environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-@st.cache
+@st.cache_data
 def load_vocab():
     return pd.read_csv("vocab.csv")
 
