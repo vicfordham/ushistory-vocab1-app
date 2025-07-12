@@ -45,6 +45,7 @@ if "student_name" not in st.session_state:
 st.subheader("📘 Choose a Vocabulary Unit to Begin")
 cols = st.columns(4)
 unit_selected = None
+units = [f"Unit {i}" for i in range(1, 8)]
 for i, unit in enumerate(units):
     if cols[i % 4].button(unit):
         st.session_state.unit_selected = unit
