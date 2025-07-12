@@ -58,7 +58,7 @@ if "page" not in st.session_state:
 
 # Login logic
 def login_page():
-    st.markdown('<div class="main-title">Welcome to Dr. Fordham's U.S. History Lab</div>', unsafe_allow_html=True)
+st.markdown("<div class=\"main-title\">Welcome to Dr. Fordham's U.S. History Lab</div>", unsafe_allow_html=True)
     st.subheader("Student Login")
     first = st.text_input("First Name")
     last = st.text_input("Last Name")
