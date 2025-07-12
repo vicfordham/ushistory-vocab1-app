@@ -85,8 +85,8 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
         vocab_df = pd.read_csv("vocab.csv")
         vocab_list = vocab_df["term"].tolist()
         if "current_term_index" not in st.session_state:
-            st.session_state.current_term_index = 0
-            st.session_state.chat_history = []
+    st.session_state.current_term_index = 0
+    st.session_state.chat_history = []
 
         if st.session_state.current_term_index < len(vocab_list):
             term = vocab_list[st.session_state.current_term_index]
