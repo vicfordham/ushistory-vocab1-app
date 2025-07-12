@@ -5,7 +5,6 @@ import os
 import random
 from datetime import datetime
 import openai
-from streamlit_chat import message
 
 # --- Configuration ---
 st.set_page_config(page_title="Dr. Fordham's History Lab", layout='wide')
@@ -18,7 +17,6 @@ VOCAB_PATH = 'vocab.xlsx'
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # Students table
     c.execute('''CREATE TABLE IF NOT EXISTS students (
                     first_name TEXT,
                     last_name TEXT,
@@ -26,7 +24,6 @@ def init_db():
                     last_login TEXT,
                     PRIMARY KEY (first_name, last_name, block)
                 )''')
-    # Progress table
     c.execute('''CREATE TABLE IF NOT EXISTS progress (
                     first_name TEXT,
                     last_name TEXT,
@@ -99,7 +96,7 @@ def student_main():
     user = st.session_state.user
     st.sidebar.button('Logout', on_click=logout)
     st.title(f"Welcome, {user['first']} {user['last']} (Block {user['block']})")
-    # Overall progress
+
     prog_df = get_student_progress(user['first'], user['last'], user['block'])
     total = sum(vocab[unit].shape[0] for unit in units)
     mastered = prog_df['mastered'].sum()
@@ -147,11 +144,13 @@ def chat_session(unit):
         st.session_state.messages = []
         st.session_state.current_index = 0
 
+    # Display chat history
     for msg in st.session_state.messages:
-        message(msg['content'], is_user=(msg['role']=='user'))
+        st.chat_message(msg['role']).write(msg['content'])
 
-    user_input = st.text_input('You:', key='input')
-    if st.button('Send', key='send') and user_input:
+    # User input
+    user_input = st.chat_input('Your response...')
+    if user_input:
         st.session_state.messages.append({'role':'user','content':user_input})
         term = df.iloc[st.session_state.current_index]
         prompt = (
@@ -161,24 +160,10 @@ def chat_session(unit):
         completion = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[{'role':'system','content':'You are a helpful tutor.'}]
-                      + st.session_state.messages
+                      + [{'role':msg['role'], 'content': msg['content']} for msg in st.session_state.messages]
         )
         reply = completion.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
-
-        if 'correct' in reply.lower():
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute(
-                'INSERT OR REPLACE INTO progress (first_name,last_name,block,unit,term,mastered) VALUES (?,?,?,?,?,1)',
-                (user['first'], user['last'], user['block'], unit, term['term'])
-            )
-            conn.commit()
-            conn.close()
-            st.session_state.current_index += 1
-            if st.session_state.current_index >= len(term_list):
-                st.success(f'{unit} completed!')
-
         st.experimental_rerun()
 
 # --- Teacher View ---
@@ -235,14 +220,13 @@ if st.session_state.role is None:
 elif st.session_state.role == 'student':
     if 'unit' not in st.session_state:
         student_main()
+    elif st.session_state.unit in units or st.session_state.unit == 'Milestone':
+        chat_session(st.session_state.unit)
     else:
-        if st.session_state.unit in units or st.session_state.unit == 'Milestone':
-            chat_session(st.session_state.unit)
-        else:
-            # Special project
-            st.header('Special Project: Chat with Ben')
-            st.info('Benjamin Collins simulation coming soon.')
-            if st.button('Back to Menu'):
-                back_to_menu()
+        st.header('Special Project: Chat with Ben')
+        st.info('Benjamin Collins simulation coming soon.')
+        if st.button('Back to Menu'):
+            back_to_menu()
 elif st.session_state.role == 'teacher':
     teacher_main()
+
