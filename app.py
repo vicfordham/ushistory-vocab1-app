@@ -3,214 +3,189 @@ import streamlit as st
 import pandas as pd
 import random
 from datetime import datetime
+import os
 
-# ------------------- Setup -------------------
+# Constants
+UNITS = [f"Unit {i}" for i in range(1, 8)]
+FINAL_UNIT = "Milestone Practice"
+ALL_UNITS = UNITS + [FINAL_UNIT]
+VOCAB_FILE = "vocab.xlsx"
+TEACHER_PASSWORD = "fordhamsecure"
 
-st.set_page_config(page_title="U.S. History Vocab Mastery", layout="wide")
-
-@st.cache_data
-def load_vocab():
-    try:
-        return pd.read_excel("vocab.xlsx", sheet_name=None)
-    except Exception as e:
-        st.error(f"Could not load vocabulary file: {e}")
-        return {}
-
-@st.cache_data
-def load_teacher_password():
-    return "teacher123"
-
-# ------------------- Session State Init -------------------
-
+# Initialize session state
 if "page" not in st.session_state:
-    st.session_state.page = "login"
+    st.session_state.page = "home"
+if "student" not in st.session_state:
+    st.session_state.student = {}
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "current_term_index" not in st.session_state:
     st.session_state.current_term_index = 0
-if "unit" not in st.session_state:
-    st.session_state.unit = ""
-if "student_name" not in st.session_state:
-    st.session_state.student_name = ""
-if "block" not in st.session_state:
-    st.session_state.block = ""
-if "teacher_logged_in" not in st.session_state:
-    st.session_state.teacher_logged_in = False
 
-# ------------------- Utility Functions -------------------
-
-def format_last_login(dt):
-    return dt.strftime("%B %d, %Y - %I:%M %p")
-
-def get_student_progress(name, block, unit, scores_df):
-    row = scores_df[(scores_df["Name"] == name) & (scores_df["Block"] == block)]
-    if row.empty:
-        return 0
-    return int(round(row[unit].values[0]))
-
-def update_student_score(name, block, unit, score, scores_df):
-    if not ((scores_df["Name"] == name) & (scores_df["Block"] == block)).any():
-        new_row = {"Name": name, "Block": block, unit: score, "Last Login": datetime.now()}
-        scores_df.loc[len(scores_df)] = new_row
-    else:
-        idx = scores_df[(scores_df["Name"] == name) & (scores_df["Block"] == block)].index[0]
-        scores_df.at[idx, unit] = score
-        scores_df.at[idx, "Last Login"] = datetime.now()
-    return scores_df
-
-def save_scores(scores_dict):
-    with pd.ExcelWriter("scores.xlsx", engine="openpyxl", mode="w") as writer:
-        for block, df in scores_dict.items():
-            df.sort_values(by="Name", inplace=True)
-            df.to_excel(writer, sheet_name=block, index=False)
-
-def load_scores():
+# Helper Functions
+def load_vocab(unit):
     try:
-        excel_file = pd.ExcelFile("scores.xlsx")
-        return {sheet: excel_file.parse(sheet) for sheet in excel_file.sheet_names}
-    except:
-        return {
-            "First Block": pd.DataFrame(columns=["Name", "Block", "Unit 1", "Unit 2", "Unit 3", "Unit 4", "Unit 5", "Unit 6", "Unit 7", "Milestone Practice", "Last Login"]),
-            "Second Block": pd.DataFrame(columns=["Name", "Block", "Unit 1", "Unit 2", "Unit 3", "Unit 4", "Unit 5", "Unit 6", "Unit 7", "Milestone Practice", "Last Login"]),
-            "Fourth Block": pd.DataFrame(columns=["Name", "Block", "Unit 1", "Unit 2", "Unit 3", "Unit 4", "Unit 5", "Unit 6", "Unit 7", "Milestone Practice", "Last Login"]),
-        }
-
-# ------------------- Pages -------------------
-
-def login_page():
-    st.title("Welcome to Dr. Fordham's U.S. History Vocab Mastery")
-    st.subheader("Student Login")
-    col1, col2, col3 = st.columns([1,1,1])
-    with col1:
-        first = st.text_input("First Name")
-    with col2:
-        last = st.text_input("Last Name")
-    with col3:
-        block = st.selectbox("Block", ["First Block", "Second Block", "Fourth Block"])
-    if st.button("Login"):
-        if first and last:
-            full_name = f"{last.strip().title()}, {first.strip().title()}"
-            st.session_state.student_name = full_name
-            st.session_state.block = block
-            st.session_state.page = "main"
-            st.rerun()
-
-    st.divider()
-    st.subheader("Teacher Login")
-    password = st.text_input("Enter Teacher Password", type="password")
-    if st.button("Login as Teacher"):
-        if password == load_teacher_password():
-            st.session_state.teacher_logged_in = True
-            st.session_state.page = "teacher"
-            st.rerun()
+        if unit == FINAL_UNIT:
+            dfs = [pd.read_excel(VOCAB_FILE, sheet_name=f"Unit {i}") for i in range(1, 8)]
+            combined = pd.concat(dfs)
+            return combined.sample(n=50, replace=True).reset_index(drop=True)
         else:
-            st.error("Incorrect password.")
+            return pd.read_excel(VOCAB_FILE, sheet_name=unit)
+    except Exception as e:
+        st.error(f"Could not load vocabulary for {unit}: {e}")
+        return pd.DataFrame()
 
-def main_menu():
-    st.title(f"Welcome, {st.session_state.student_name}!")
-    vocab_data = load_vocab()
-    scores_dict = load_scores()
-    units = [f"Unit {i}" for i in range(1,8)] + ["Milestone Practice"]
-    unit_buttons = []
-
-    total_score = 0
-    for unit in units:
-        score = get_student_progress(st.session_state.student_name, st.session_state.block, unit, scores_dict[st.session_state.block])
-        total_score += score
-    overall = int(round(total_score / (len(units) * 100) * 100))
-    st.progress(overall, text=f"Overall Progress: {overall}%")
-
-    for i in range(0, len(units), 4):
-        cols = st.columns(4)
-        for j, unit in enumerate(units[i:i+4]):
-            with cols[j]:
-                if st.button(unit):
-                    st.session_state.unit = unit
-                    st.session_state.page = "chat"
-                    st.rerun()
-
-    if st.button("Log Out"):
-        st.session_state.page = "login"
-        st.rerun()
-
-def chat_page():
-    st.title(f"{st.session_state.unit} Vocabulary")
-    st.button("⬅️ Back to Menu", on_click=lambda: st.session_state.update({"page": "main"}))
-    st.button("Logout", on_click=lambda: st.session_state.update({"page": "login"}))
-    st.divider()
-
-    vocab_data = load_vocab()
-    scores_dict = load_scores()
-    unit_tab = st.session_state.unit if st.session_state.unit != "Milestone Practice" else random.choice(list(vocab_data.keys()))
-    words = vocab_data.get(unit_tab, pd.DataFrame(columns=["term", "definition"]))
-    word_list = words.to_dict("records")
-
-    if st.session_state.unit == "Milestone Practice":
-        word_list = random.sample(word_list, min(10, len(word_list)))
-
-    if "current_term_index" not in st.session_state or st.session_state.unit != st.session_state.get("last_unit"):
-        st.session_state.current_term_index = 0
-        st.session_state.chat_history = []
-        st.session_state.last_unit = st.session_state.unit
-
-    index = st.session_state.current_term_index
-    if index < len(word_list):
-        term_data = word_list[index]
-        st.markdown(f"**🗣 Let's talk about the word: `{term_data['term']}`**")
-        user_input = st.text_input("What does this mean?", key=f"input_{index}")
-        if st.button("Submit", key=f"submit_{index}"):
-            correct = term_data["definition"].lower()
-            if user_input and user_input.lower() in correct:
-                response = f"✅ That's right! '{term_data['term']}' means: {term_data['definition']}"
-            else:
-                response = f"🤔 Not quite. '{term_data['term']}' means: {term_data['definition']}"
-
-            st.session_state.chat_history.append((term_data['term'], user_input, response))
-            st.session_state.current_term_index += 1
-            st.rerun()
+def update_gradebook(student, unit, correct, total):
+    block = student["block"]
+    file = f"gradebook_block_{block}.csv"
+    if os.path.exists(file):
+        df = pd.read_csv(file)
     else:
-        st.success("🎉 You’ve completed this unit!")
-        score = int(round(len(st.session_state.chat_history) / len(word_list) * 100))
-        scores_dict[st.session_state.block] = update_student_score(
-            st.session_state.student_name,
-            st.session_state.block,
-            st.session_state.unit,
-            score,
-            scores_dict[st.session_state.block]
-        )
-        save_scores(scores_dict)
+        df = pd.DataFrame()
 
-    for term, answer, reply in st.session_state.chat_history:
-        with st.chat_message("user"):
-            st.markdown(f"**{term}**: {answer}")
+    full_name = f"{student['last']}, {student['first']}"
+    progress = round((correct / total) * 100 + 0.5)  # round up if >= .5
+    last_login = datetime.now().strftime("%B %d, %Y - %I:%M %p")
+
+    if full_name in df["name"].values:
+        df.loc[df["name"] == full_name, unit] = progress
+        df.loc[df["name"] == full_name, "Last Login"] = last_login
+    else:
+        row = {
+            "name": full_name,
+            unit: progress,
+            "Last Login": last_login
+        }
+        for u in UNITS:
+            if u != unit:
+                row[u] = ""
+        row["Milestone Practice"] = "" if unit != FINAL_UNIT else progress
+        df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+    df.to_csv(file, index=False)
+
+# Pages
+def home_page():
+    st.title("📘 U.S. History Vocab Mastery Tool")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Student Login")
+        first = st.text_input("First Name")
+        last = st.text_input("Last Name")
+        block = st.selectbox("Block", ["First", "Second", "Fourth"])
+        if st.button("Login"):
+            if first and last:
+                st.session_state.student = {
+                    "first": first.strip().title(),
+                    "last": last.strip().title(),
+                    "block": block.lower()
+                }
+                st.session_state.page = "menu"
+    with col2:
+        st.subheader("Teacher Login")
+        pw = st.text_input("Password", type="password")
+        if st.button("Enter Teacher Dashboard"):
+            if pw == TEACHER_PASSWORD:
+                st.session_state.page = "teacher"
+
+def student_menu():
+    st.title(f"Welcome, {st.session_state.student['first']} {st.session_state.student['last']} 👋")
+    st.subheader("Select a Unit to Begin:")
+    cols = st.columns(4)
+    for i, unit in enumerate(ALL_UNITS):
+        with cols[i % 4]:
+            if st.button(unit):
+                st.session_state.selected_unit = unit
+                st.session_state.page = "unit"
+                st.session_state.current_term_index = 0
+                st.session_state.chat_history = []
+
+    # Show overall progress
+    block = st.session_state.student["block"]
+    full_name = f"{st.session_state.student['last']}, {st.session_state.student['first']}"
+    file = f"gradebook_block_{block}.csv"
+    if os.path.exists(file):
+        df = pd.read_csv(file)
+        row = df[df["name"] == full_name]
+        if not row.empty:
+            scores = row[UNITS].fillna(0).astype(float)
+            total = scores.sum(axis=1).values[0]
+            progress = round(total / (len(UNITS) * 100) * 100 + 0.5)
+            st.progress(progress / 100, text=f"Overall Progress: {progress}%")
+
+    if st.button("Logout"):
+        st.session_state.page = "home"
+        st.session_state.student = {}
+
+def unit_page():
+    unit = st.session_state.selected_unit
+    df = load_vocab(unit)
+    if df.empty:
+        return
+    vocab_list = df.to_dict("records")
+
+    st.button("⬅️ Back to Menu", on_click=lambda: st.session_state.update({"page": "menu"}))
+    st.button("Logout", on_click=lambda: st.session_state.update({"page": "home", "student": {}}))
+
+    total = len(vocab_list)
+    correct = st.session_state.get("correct", 0)
+
+    st.progress(correct / total, text=f"{correct} of {total} Mastered")
+
+    if st.session_state.current_term_index < total:
+        current = vocab_list[st.session_state.current_term_index]
+        term = current["term"]
+        correct_def = current["definition"]
+
+        if st.session_state.chat_history:
+            for role, msg in st.session_state.chat_history:
+                with st.chat_message(role):
+                    st.markdown(msg)
+
         with st.chat_message("assistant"):
-            st.markdown(reply)
+            st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
 
-def teacher_page():
-    st.title("📊 Teacher Dashboard")
-    st.button("Logout", on_click=lambda: st.session_state.update({"teacher_logged_in": False, "page": "login"}))
-    scores_dict = load_scores()
-    tabs = st.tabs(["First Block", "Second Block", "Fourth Block"])
-    for i, block in enumerate(["First Block", "Second Block", "Fourth Block"]):
-        with tabs[i]:
-            df = scores_dict[block].copy()
-            if not df.empty:
-                df["Last Login"] = pd.to_datetime(df["Last Login"], errors="coerce").dt.strftime("%B %d, %Y - %I:%M %p")
-                unit_cols = [col for col in df.columns if "Unit" in col or "Milestone" in col]
-                df["Overall"] = df[unit_cols].mean(axis=1).round().astype("Int64").astype(str) + "%"
-                df = df[["Name"] + unit_cols + ["Overall", "Last Login"]]
-                df = df.sort_values("Name")
-                st.dataframe(df, use_container_width=True)
+        user_input = st.chat_input("What do you think it means?")
+        if user_input:
+            st.session_state.chat_history.append(("user", user_input))
+            if user_input.lower().strip() in correct_def.lower():
+                response = f"✅ That's right! '{term}' means: {correct_def}"
+                st.session_state.correct = st.session_state.get("correct", 0) + 1
+                st.session_state.current_term_index += 1
             else:
-                st.info("No student data available.")
+                response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
 
-# ------------------- Routing -------------------
+            st.session_state.chat_history.append(("assistant", response))
+            with st.chat_message("assistant"):
+                st.markdown(response)
+    else:
+        st.success("🎉 You've completed this unit!")
+        update_gradebook(st.session_state.student, unit, st.session_state.get("correct", 0), total)
 
-if st.session_state.page == "login":
-    login_page()
-elif st.session_state.page == "main":
-    main_menu()
-elif st.session_state.page == "chat":
-    chat_page()
+def teacher_dashboard():
+    st.title("📊 Teacher Dashboard")
+    tabs = st.tabs(["First Block", "Second Block", "Fourth Block"])
+    for i, blk in enumerate(["first", "second", "fourth"]):
+        file = f"gradebook_block_{blk}.csv"
+        if os.path.exists(file):
+            df = pd.read_csv(file)
+            cols = ["name"] + UNITS + [FINAL_UNIT, "Last Login"]
+            df = df[cols]
+            df = df.sort_values(by="name")
+            tabs[i].dataframe(df)
+            tabs[i].download_button("Download", df.to_csv(index=False), file_name=f"{blk}_block_gradebook.csv")
+        else:
+            tabs[i].warning("No data available yet.")
+
+    if st.button("Logout"):
+        st.session_state.page = "home"
+
+# Page Router
+if st.session_state.page == "home":
+    home_page()
+elif st.session_state.page == "menu":
+    student_menu()
+elif st.session_state.page == "unit":
+    unit_page()
 elif st.session_state.page == "teacher":
-    teacher_page()
+    teacher_dashboard()
