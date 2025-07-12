@@ -86,15 +86,15 @@ if admin_pw == "letmein":
         tab_labels = [f"{b} Block" for b in blocks]
         tabs = st.tabs(tab_labels)
         for i, blk in enumerate(blocks):
-            blk_data = summary[summary["block"] == blk].sort_values(by=lambda x: x["student"].split()[-1])
+            blk_data = summary[summary["block"] == blk].copy(); blk_data["Last_Name"] = blk_data["student"].apply(lambda x: x.split()[-1]); blk_data = blk_data.sort_values(by="Last_Name")
             with tabs[i]:
                 st.dataframe(blk_data)
 
         # Create downloadable Excel
         output = pd.ExcelWriter("/mnt/data/class_data.xlsx", engine="xlsxwriter")
         for blk in blocks:
-            blk_data = summary[summary["block"] == blk].sort_values(by=lambda x: x["student"].split()[-1])
-            blk_data.to_excel(output, sheet_name=f"{blk} Block", index=False)
+            blk_data = summary[summary["block"] == blk].copy(); blk_data["Last_Name"] = blk_data["student"].apply(lambda x: x.split()[-1]); blk_data = blk_data.sort_values(by="Last_Name")
+            blk_data.drop(columns=["Last_Name"]).to_excel(output, sheet_name=f"{blk} Block", index=False)
         output.close()
 
         st.download_button(
