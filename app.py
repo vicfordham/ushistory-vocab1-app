@@ -1,135 +1,146 @@
 
 import streamlit as st
 import pandas as pd
+import datetime
 import os
-from datetime import datetime
 
-st.set_page_config(page_title="U.S. History Vocab Mastery", layout="wide")
+# Set page config
+st.set_page_config(page_title="U.S. History Vocabulary Mastery", layout="wide")
 
-# Session state initialization
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+# Session state defaults
+if "page" not in st.session_state:
+    st.session_state.page = "login"
 if "student_name" not in st.session_state:
     st.session_state.student_name = ""
-if "unit_selected" not in st.session_state:
-    st.session_state.unit_selected = None
+if "block" not in st.session_state:
+    st.session_state.block = ""
+if "unit" not in st.session_state:
+    st.session_state.unit = ""
 if "current_term_index" not in st.session_state:
     st.session_state.current_term_index = 0
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# Load vocabulary data
-def load_vocab(unit_tab):
+# Load vocabulary from Excel
+def load_vocab(unit_sheet):
     try:
-        df = pd.read_excel("vocab.xlsx", sheet_name=unit_tab)
+        df = pd.read_excel("vocab.xlsx", sheet_name=unit_sheet, engine="openpyxl")
         return df
     except Exception as e:
-        st.error(f"Could not load vocabulary for {unit_tab}: {e}")
-        return pd.DataFrame()
+        st.error(f"Could not load vocabulary for {unit_sheet}: {e}")
+        return None
 
-# Login page
-def login_page():
-    st.title("📚 U.S. History Vocab Mastery - Login")
-    first_name = st.text_input("First Name")
-    last_name = st.text_input("Last Name")
-    if st.button("Log in"):
-        if first_name and last_name:
-            st.session_state.student_name = f"{first_name.strip().title()} {last_name.strip().title()}"
-            st.session_state.logged_in = True
-            st.experimental_rerun()
+# Save student progress
+def save_progress(student_name, block, unit, index):
+    today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    progress_path = "student_progress.csv"
+    if os.path.exists(progress_path):
+        df = pd.read_csv(progress_path)
+    else:
+        df = pd.DataFrame(columns=["student_name", "block", "unit", "term_index", "last_login"])
+    df = df[df["student_name"].str.lower() != student_name.lower()]
+    df.loc[len(df.index)] = [student_name, block, unit, index, today]
+    df.to_csv(progress_path, index=False)
 
-# Main menu with Unit buttons
+# Main menu page
 def main_menu():
     st.title(f"Welcome, {st.session_state.student_name} 👋")
-    st.subheader("📖 Choose a Unit")
-    col1, col2, col3, col4 = st.columns(4)
-    units = [f"Unit {i}" for i in range(1, 8)]
+    st.subheader("Select a Vocabulary Assignment:")
+    col1, col2, col3 = st.columns(3)
     with col1:
-        for i in range(0, 2):
-            if st.button(units[i]):
-                st.session_state.unit_selected = units[i]
-                st.experimental_rerun()
+        if st.button("Unit 1 Vocabulary"):
+            st.session_state.unit = "Unit 1"
+            st.session_state.page = "unit_page"
+            st.experimental_rerun()
     with col2:
-        for i in range(2, 4):
-            if st.button(units[i]):
-                st.session_state.unit_selected = units[i]
-                st.experimental_rerun()
+        if st.button("Unit 2 Vocabulary"):
+            st.session_state.unit = "Unit 2"
+            st.session_state.page = "unit_page"
+            st.experimental_rerun()
     with col3:
-        for i in range(4, 6):
-            if st.button(units[i]):
-                st.session_state.unit_selected = units[i]
-                st.experimental_rerun()
-    with col4:
-        for i in range(6, 7):
-            if st.button(units[i]):
-                st.session_state.unit_selected = units[i]
-                st.experimental_rerun()
-    st.markdown("---")
-    if st.button("Log out"):
-        st.session_state.logged_in = False
-        st.session_state.student_name = ""
-        st.session_state.unit_selected = None
-        st.session_state.current_term_index = 0
-        st.session_state.chat_history = []
-        st.experimental_rerun()
+        if st.button("Unit 3 Vocabulary"):
+            st.session_state.unit = "Unit 3"
+            st.session_state.page = "unit_page"
+            st.experimental_rerun()
+    st.button("Log out", on_click=logout)
 
-# Unit page with vocab interaction
+# Logout function
+def logout():
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.session_state.page = "login"
+    st.experimental_rerun()
+
+# Unit interaction page
 def unit_page():
-    unit = st.session_state.unit_selected
-    st.title(f"{unit} Vocabulary")
-    if st.button("⬅ Back to Main Menu"):
-        st.session_state.unit_selected = None
-        st.session_state.current_term_index = 0
-        st.session_state.chat_history = []
-        st.experimental_rerun()
-    if st.button("Log out"):
-        st.session_state.logged_in = False
-        st.session_state.student_name = ""
-        st.session_state.unit_selected = None
-        st.session_state.current_term_index = 0
-        st.session_state.chat_history = []
-        st.experimental_rerun()
-
-    vocab_df = load_vocab(unit)
-    if vocab_df.empty:
+    unit = st.session_state.unit
+    df = load_vocab(unit)
+    if df is None or df.empty:
+        st.warning("No vocabulary found.")
         return
 
-    vocab_list = vocab_df.to_dict("records")
-    if st.session_state.current_term_index >= len(vocab_list):
-        st.success("🎉 You've completed all terms in this unit!")
+    vocab_list = df.to_dict("records")
+    index = st.session_state.current_term_index
+    if index >= len(vocab_list):
+        st.success("🎉 You've completed this unit!")
+        if st.button("Back to Menu"):
+            st.session_state.page = "main_menu"
+            st.experimental_rerun()
         return
 
-    term_data = vocab_list[st.session_state.current_term_index]
-    term = term_data["term"]
-    correct_def = term_data["definition"]
+    term = vocab_list[index]["term"]
+    correct_def = vocab_list[index]["definition"]
 
-    st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+    st.markdown(f"### 📘 Let's talk about: `{term}`")
 
-    for speaker, message in st.session_state.chat_history:
+    for speaker, msg in st.session_state.chat_history:
         with st.chat_message(speaker):
-            st.markdown(message)
+            st.markdown(msg)
 
-    user_input = st.chat_input("Type your response...")
+    user_input = st.chat_input("What does this word mean?")
     if user_input:
         with st.chat_message("user"):
             st.markdown(user_input)
-        st.session_state.chat_history.append(("user", user_input))
 
         if user_input.lower() in correct_def.lower():
-            response = f"✅ That's right! '{term}' means: {correct_def}. Great work!"
+            response = f"✅ That's right! '{term}' means: {correct_def}"
             st.session_state.current_term_index += 1
-            st.session_state.chat_history = []
+            save_progress(st.session_state.student_name, st.session_state.block, unit, st.session_state.current_term_index)
         else:
-            response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
+            response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's keep going and talk more—can you explain why this matters in U.S. History?"
 
-        with st.chat_message("assistant"):
-            st.markdown(response)
         st.session_state.chat_history.append(("assistant", response))
+        st.experimental_rerun()
 
-# App logic
-if not st.session_state.logged_in:
+    st.button("⬅️ Back to Menu", on_click=lambda: go_to_menu())
+    st.button("🚪 Log out", on_click=logout)
+
+def go_to_menu():
+    st.session_state.page = "main_menu"
+    st.session_state.current_term_index = 0
+    st.session_state.chat_history = []
+    st.experimental_rerun()
+
+# Login page
+def login_page():
+    st.title("🔑 Student Login")
+    fname = st.text_input("First Name")
+    lname = st.text_input("Last Name")
+    block = st.selectbox("Class Block", ["First", "Second", "Fourth"])
+    if st.button("Login"):
+        if fname and lname and block:
+            full_name = f"{fname.strip().title()} {lname.strip().title()}"
+            st.session_state.student_name = full_name
+            st.session_state.block = block
+            st.session_state.page = "main_menu"
+            st.experimental_rerun()
+        else:
+            st.warning("Please fill in all fields.")
+
+# Page router
+if st.session_state.page == "login":
     login_page()
-elif st.session_state.unit_selected:
-    unit_page()
-else:
+elif st.session_state.page == "main_menu":
     main_menu()
+elif st.session_state.page == "unit_page":
+    unit_page()
