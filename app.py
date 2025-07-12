@@ -13,7 +13,7 @@ def load_database():
     try:
         return pd.read_csv("mastery_data.csv")
     except FileNotFoundError:
-        return pd.DataFrame(columns=["student", "term", "mastered", "timestamp"])
+        return pd.DataFrame(columns=["student", "block", "term", "mastered", "timestamp", "last_login"])
 
 def save_database(df):
     df.to_csv("mastery_data.csv", index=False)
@@ -23,11 +23,37 @@ def load_vocab():
     return pd.read_csv("vocab.csv")
 
 # ---------------- APP START ----------------
-st.set_page_config(page_title="History Vocab Tutor", layout="centered")
-st.title("📘 U.S. History Vocabulary Tutor")
+st.set_page_config(page_title="Dr. Fordham's History Lab", layout="centered")
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    .stButton>button {
+        background-color: #4b6cb7;
+        color: white;
+        border-radius: 8px;
+        padding: 0.6em 1.2em;
+        font-weight: bold;
+    }
+    .stTextInput>div>input, .stSelectbox>div>div {
+        border-radius: 8px;
+    }
+    .stProgress>div>div>div {
+        background-color: #4b6cb7;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("📘 Dr. Fordham's U.S. History Lab")
+st.markdown("Welcome to your personal mastery-based vocabulary coach. Let's build confidence one word at a time. 💪")
 
 # Sidebar for teacher login
-st.sidebar.title("Teacher Login")
+st.sidebar.title("👨‍🏫 Teacher Login")
 admin_pw = st.sidebar.text_input("Enter teacher password", type="password")
 if admin_pw == "letmein":
     st.sidebar.success("Access granted.")
@@ -36,41 +62,68 @@ if admin_pw == "letmein":
     if data.empty:
         st.info("No student data yet.")
     else:
-        summary = data[data["mastered"] == True].groupby("student")["term"].count().reset_index()
-        total_terms = len(load_vocab())
-        summary["Total Terms"] = total_terms
-        summary["Grade (%)"] = (summary["term"] / total_terms * 100).round(1)
-        summary.rename(columns={"term": "Mastered Terms"}, inplace=True)
-        st.dataframe(summary)
+        vocab_total = len(load_vocab())
+        mastery_summary = (
+            data[data["mastered"] == True]
+            .groupby(["student", "block"])
+            .agg(Mastered_Terms=("term", "count"), Last_Login=("last_login", "max"))
+            .reset_index()
+        )
+        mastery_summary["Total Terms"] = vocab_total
+        mastery_summary["Grade (%)"] = (mastery_summary["Mastered_Terms"] / vocab_total * 100).round(1)
+        st.dataframe(mastery_summary)
     st.stop()
 
 # ---------------- STUDENT MODE ----------------
 if "student_name" not in st.session_state:
+    st.subheader("🔐 Student Login")
     with st.form("name_form"):
         first = st.text_input("First Name")
         last = st.text_input("Last Name")
+        block = st.selectbox("Which Block are you in?", ["First", "Second", "Fourth"])
         submitted = st.form_submit_button("Start")
-        if submitted and first and last:
+        if submitted and first and last and block:
             full_name = f"{first.strip()} {last.strip()}"
             st.session_state.student_name = full_name
+            st.session_state.block = block
+            st.session_state.last_login = datetime.now().isoformat()
             st.rerun()
     st.stop()
 
 name = st.session_state.student_name
+block = st.session_state.block
+last_login = st.session_state.last_login
+
 vocab = load_vocab()
 mastery_data = load_database()
+
+# Update last login record for student (only on load)
+existing = (mastery_data["student"] == name) & (mastery_data["term"].isnull())
+if not mastery_data[existing].empty:
+    mastery_data.loc[existing, "last_login"] = last_login
+else:
+    mastery_data = pd.concat([mastery_data, pd.DataFrame([{
+        "student": name,
+        "block": block,
+        "term": None,
+        "mastered": None,
+        "timestamp": None,
+        "last_login": last_login
+    }])], ignore_index=True)
+save_database(mastery_data)
 
 # Filter out terms already mastered by this student
 mastered_terms = mastery_data[(mastery_data["student"] == name) & (mastery_data["mastered"] == True)]["term"].tolist()
 remaining_vocab = vocab[~vocab["term"].isin(mastered_terms)].reset_index(drop=True)
 total_vocab = len(vocab)
-mastered_count = len(mastery_data[(mastery_data["student"] == name) & (mastery_data["mastered"] == True)])
+mastered_count = len(mastered_terms)
 progress_pct = (mastered_count / total_vocab) * 100
 
 # Show progress bar
-st.sidebar.markdown(f"### Progress for {name}")
+st.sidebar.markdown(f"### 📈 Progress for {name}")
 st.sidebar.progress(int(progress_pct))
 st.sidebar.markdown(f"**{mastered_count} / {total_vocab}** terms mastered ({int(progress_pct)}%)")
+st.sidebar.markdown(f"**Block:** {block}")
 
 if "index" not in st.session_state:
     st.session_state.index = 0
@@ -128,9 +181,11 @@ if st.session_state.index < len(remaining_vocab):
         if "you got it" in reply.lower() or "let’s move on" in reply.lower():
             new_row = pd.DataFrame([{
                 "student": name,
+                "block": block,
                 "term": term,
                 "mastered": True,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "last_login": last_login
             }])
             mastery_data = pd.concat([mastery_data, new_row], ignore_index=True)
             save_database(mastery_data)
