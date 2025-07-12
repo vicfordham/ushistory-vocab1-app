@@ -1,170 +1,146 @@
+# app.py — Clean, Stable Rebuild for Dr. Fordham's U.S. History Vocab Mastery App
+
 import streamlit as st
+import pandas as pd
+import os
+import datetime
+
+# -------------------- PAGE CONFIG --------------------
+st.set_page_config(page_title="U.S. History Vocab Mastery", layout="centered")
+
+# -------------------- STYLE --------------------
 st.markdown("""
-<style>
-.stButton>button {
-border-radius: 12px;
-font-weight: bold;
-padding: 0.75em 1.5em;
-margin: 0.25em;
-background: linear-gradient(to right, #6dd5ed, #2193b0);
-color: white;
-font-size: 1.1em;
-border: none;
-}
-.title {
-font-size: 2em;
-font-weight: 700;
-color: #2c3e50;
-}
-</style>
+    <style>
+    .stButton>button {
+        border-radius: 12px;
+        font-weight: bold;
+        padding: 0.75em 1.5em;
+        margin: 0.25em;
+        background: linear-gradient(to right, #6dd5ed, #2193b0);
+        color: white;
+        font-size: 1.1em;
+        border: none;
+    }
+    .title {
+        font-size: 2em;
+        font-weight: 700;
+        color: #2c3e50;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
-
-st.markdown("<div class='title'>📚 Dr. Fordham's U.S. History Lab</div>", unsafe_allow_html=True)
-st.markdown("---")
-
-# Session state for login
-if "student_name" not in st.session_state:
-    st.session_state.student_name = None
-
-    # Login Page
-    if not st.session_state.student_name:
-        st.subheader("📝 Student Login")
-        first_name = st.text_input("First Name")
-        last_name = st.text_input("Last Name")
-        block = st.selectbox("Select Your Block", ["First", "Second", "Fourth"])
-    if st.button("Enter"):
-        if first_name and last_name:
-            st.session_state.block = block
-            st.session_state.login_time = datetime.now().isoformat()
-        else:
-            st.warning("Please enter both first and last names.")
-            st.stop()
-
-# Unit Selection Page
-st.subheader("📘 Choose a Vocabulary Unit to Begin")
-cols = st.columns(4)
-unit_selected = None
-units = [f"Unit {i}" for i in range(1, 8)]
-for i, unit in enumerate(units):
-    if cols[i % 4].button(unit):
-        st.session_state.unit_selected = unit
-
-
-
-# Quiz Button
-if st.button("🎯 Final Quiz (50 Random Words"):
-    st.info("Quiz mode coming soon!")
-
-# Route to unit page if selected
-if "unit_selected" in st.session_state and st.session_state.unit_selected:
-    if st.button("🔙 Back to Unit Menu"):
-        del st.session_state.unit_selected
-        del st.session_state.unit_selected
-        st.experimental_rerun()
-
-if st.button("🚪 Logout"):
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.experimental_rerun()
-
-if st.session_state.get("logged_in"):
-        if "unit_selected" in st.session_state and st.session_state.unit_selected:
-            unit = st.session_state.unit_selected
-
-if unit == "Unit 1":
-    # Load vocab
-    vocab_df = pd.read_csv("vocab.csv")
-    vocab_list = vocab_df["term"].tolist()
-
-    # Initialize session state
-if "current_term_index" not in st.session_state:
+# -------------------- SESSION STATE INIT --------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.student_name = ""
+    st.session_state.block = ""
+    st.session_state.unit_selected = ""
     st.session_state.current_term_index = 0
+    st.session_state.vocab_list = []
     st.session_state.chat_history = []
 
-# If terms remain
-    if "vocab_list" in st.session_state and st.session_state.current_term_index < len(st.session_state.vocab_list):
-        term = vocab_list[st.session_state.current_term_index]
-    if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
-        term = st.session_state.vocab_list[st.session_state.current_term_index]
+# -------------------- FUNCTIONS --------------------
+def load_vocab(unit_file):
+    return pd.read_csv(unit_file)
 
-# Display previous chat
-for role, msg in st.session_state.chat_history:
-    with st.chat_message(role):
-        st.markdown(msg)
+def record_login(name, block):
+    now = datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    df = pd.DataFrame([[name, block, now]], columns=["student", "block", "last_login"])
+    if os.path.exists("student_logins.csv"):
+        old = pd.read_csv("student_logins.csv")
+        old = old[old["student"] != name]  # remove duplicates
+        df = pd.concat([old, df], ignore_index=True)
+    df.to_csv("student_logins.csv", index=False)
 
-# Student input
-user_input = st.chat_input("What do you think it means?")
-if user_input:
-    with st.chat_message("user"):
-        st.markdown(user_input)
+def show_main_menu():
+    st.markdown("<div class='title'>📚 Welcome to U.S. History Vocab Mastery</div>", unsafe_allow_html=True)
+    st.markdown(f"### Hello, {st.session_state.student_name}! (Block {st.session_state.block})")
+    st.markdown("Choose a Unit to Begin:")
+
+    cols = st.columns(4)
+    for i in range(1, 8):
+        with cols[i % 4]:
+            if st.button(f"Unit {i}"):
+                st.session_state.unit_selected = "vocabulary.csv"
+                st.experimental_rerun()
+
+    st.markdown("---")
+    if st.button("📝 Take the 50-Word Quiz"):
+        st.session_state.unit_selected = "quiz.csv"
+        st.experimental_rerun()
+    st.button("🚪 Log Out", on_click=logout)
+
+def logout():
+    st.session_state.logged_in = False
+    st.session_state.student_name = ""
+    st.session_state.block = ""
+    st.session_state.unit_selected = ""
+    st.session_state.chat_history = []
+    st.session_state.current_term_index = 0
+    st.experimental_rerun()
+
+def show_vocab_conversation():
+    if not st.session_state.vocab_list:
+        vocab_df = load_vocab(st.session_state.unit_selected)
+        st.session_state.vocab_list = vocab_df.to_dict(orient="records")
+        st.session_state.current_term_index = 0
+
+    vocab = st.session_state.vocab_list
+    idx = st.session_state.current_term_index
+
+    if idx >= len(vocab):
+        st.success("✅ You've completed this unit! Great job.")
+        if st.button("⬅ Back to Main Menu"):
+            st.session_state.unit_selected = ""
+            st.experimental_rerun()
+        return
+
+    term_data = vocab[idx]
+    term = term_data["term"]
+    correct_def = term_data["definition"]
+
+    st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+
+    for role, msg in st.session_state.chat_history:
+        with st.chat_message(role):
+            st.markdown(msg)
+
+    user_input = st.chat_input("What do you think it means?")
+
+    if user_input:
         st.session_state.chat_history.append(("user", user_input))
+        with st.chat_message("user"):
+            st.markdown(user_input)
 
+        # Simulate feedback (basic logic, can be replaced by GPT)
+        if user_input.lower() in correct_def.lower():
+            response = f"✅ That’s right! '{term}' means: {correct_def}"
+            st.session_state.current_term_index += 1
+            st.session_state.chat_history = []
+        else:
+            response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Want to try another example?"
 
-
-
-    st.session_state.chat_history.append(("assistant", response))
-    with st.chat_message("assistant"):
-        st.markdown(response)
-        st.balloons()
-        st.success("🎉 You've finished all Unit 1 vocabulary!")
-        if "current_term_index" not in st.session_state:
-                                                                                                    st.session_state.current_term_index = 0
-                                                                                                    st.session_state.chat_history = []
-                                                                                                    st.session_state.chat_history = []
-                                                                                                    if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
-                                                                                                        term = st.session_state.vocab_list[st.session_state.current_term_index]
-
-                                                                                                        for role, msg in st.session_state.chat_history:
-                                                                                                            with st.chat_message(role):
-                                                                                                                st.markdown(msg)
-                                                                                                                user_input = st.chat_input("What do you think it means?")
-                                                                                                                if user_input:
-                                                                                                                    if user_input:
-                                                                                                                        with st.chat_message("user"):
-
-                                                                                                                            if term_index < len(vocab_list):
-                                                                                                                                term = vocab_list[term_index]
-                                                                                                                                correct_def = vocab_df[vocab_df['term'] == term]['definition'].values[0]
-                                                                                                                                if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
-                                                                                                                                    term = st.session_state.vocab_list[st.session_state.current_term_index]
-                                                                                                                                    for role, msg in st.session_state.chat_history:
-                                                                                                                                        with st.chat_message(role):
-                                                                                                                                            st.markdown(msg)
-                                                                                                                                            user_input = st.chat_input("What do you think it means?")
-                                                                                                                                            if user_input:
-                                                                                                                                                with st.chat_message("user"):
-                                                                                                                                                    st.markdown(user_input)
-                                                                                                                                                    if is_correct_definition(user_input, correct_def):
-
-
-                                                                                                                                                        # Load vocab for Unit 1
-                                                                                                                                                        vocab_df = pd.read_csv("vocab.csv")
-                                                                                                                                                        vocab_list = vocab_df["term"].tolist()
-                                                                                                                                                        if "current_term_index" not in st.session_state:
-                                                                                                                                                            st.session_state.current_term_index = 0
-                                                                                                                                                            st.session_state.chat_history = []
-
-                                                                                                                                                            if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
-                                                                                                                                                                term = st.session_state.vocab_list[st.session_state.current_term_index]
-
-                                                                                                                                                                with st.chat_message(role):
-                                                                                                                                                                    st.markdown(msg)
-
-                                                                                                                                                                    user_input = st.chat_input("What do you think it means?")
-                                                                                                                                                                    if user_input:
-                                                                                                                                                                        with st.chat_message("user"):
-                                                                                                                                                                            st.markdown(user_input)
-
-                                                                                                                                                                            # AI Evaluation (simple rule-based for now)
-                                                                                                                                                                            correct_def = vocab_df[vocab_df["term"] == term]["definition"].values[0]
-if user_input and user_input.lower() in correct_def.lower():
-    if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
-        term = st.session_state.vocab_list[st.session_state.current_term_index]
+        st.session_state.chat_history.append(("assistant", response))
         with st.chat_message("assistant"):
             st.markdown(response)
-else:
-    with st.chat_message("assistant"):
-        st.markdown(response)
-        st.success("🎉 You've finished all Unit 1 vocabulary!")
 
+# -------------------- APP --------------------
+st.title("Dr. Fordham's Vocab Mastery App")
+
+if not st.session_state.logged_in:
+    st.subheader("Student Login")
+    first = st.text_input("First Name")
+    last = st.text_input("Last Name")
+    block = st.selectbox("Class Period (Block)", ["First", "Second", "Fourth"])
+    if st.button("Log In"):
+        name = f"{first.strip().title()} {last.strip().title()}"
+        st.session_state.student_name = name
+        st.session_state.block = block
+        st.session_state.logged_in = True
+        record_login(name, block)
+        st.experimental_rerun()
+else:
+    if st.session_state.unit_selected:
+        show_vocab_conversation()
+    else:
+        show_main_menu()
