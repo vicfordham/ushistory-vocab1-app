@@ -1,180 +1,170 @@
 
+# Dr. Fordham's U.S. History Lab - Streamlit App
+
 import streamlit as st
 import pandas as pd
 import random
 from datetime import datetime
+import os
 
 st.set_page_config(page_title="Dr. Fordham's US History Lab", layout="wide")
 
-# Title
-st.title("📚 Dr. Fordham's US History Lab")
+# --- Constants ---
+UNITS = [f"Unit {i}" for i in range(1, 8)]
+MILESTONE = "Milestone Practice"
+ALL_UNITS = UNITS + [MILESTONE]
 
-# Inject humor
-def dr_fordham_says():
-    sayings = [
-        "Dr. Fordham knows all, so stay on task!",
-        "Don't make Dr. Fordham raise an eyebrow!",
-        "Legend has it Dr. Fordham never forgets a wrong answer!",
-        "Rumor has it Dr. Fordham can hear your thoughts—define that term!",
-        "Dr. Fordham is watching... define wisely!"
-    ]
-    return random.choice(sayings)
-
-# Load vocabulary from Excel
-@st.cache_data
-def load_vocab(unit):
+# --- Helper Functions ---
+def load_vocab_data():
     try:
-        df = pd.read_excel("vocab.xlsx", sheet_name=unit)
-        return df
+        return pd.read_excel("vocab.xlsx", sheet_name=None)
     except Exception as e:
-        st.error(f"Could not load vocabulary for {unit}: {e}")
-        return pd.DataFrame()
+        st.error(f"Could not load vocabulary data: {e}")
+        return {}
 
-# Initialize session state
-if "page" not in st.session_state:
-    st.session_state.page = "login"
-if "student_name" not in st.session_state:
-    st.session_state.student_name = ""
-if "block" not in st.session_state:
-    st.session_state.block = ""
-if "unit" not in st.session_state:
-    st.session_state.unit = ""
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "term_index" not in st.session_state:
-    st.session_state.term_index = 0
-if "mastered_terms" not in st.session_state:
-    st.session_state.mastered_terms = {}
+def get_current_time():
+    return datetime.now().strftime("%B %d, %Y - %I:%M %p")
 
-# Progress calculation
-def calculate_unit_progress(unit_terms, mastered):
-    if not unit_terms:
-        return 0
-    return int(round((len(mastered) / len(unit_terms)) * 100))
+def evaluate_response(user_input, correct_def):
+    if user_input and correct_def:
+        user_input = user_input.lower()
+        correct_def = correct_def.lower()
+        if user_input in correct_def or any(word in correct_def for word in user_input.split()):
+            return True
+    return False
 
-# Login page
-def login_page():
-    st.subheader("Student Login")
-    first = st.text_input("First Name")
-    last = st.text_input("Last Name")
-    block = st.selectbox("Class Block", ["First", "Second", "Fourth"])
+def playful_reminder():
+    return random.choice([
+        "Don't slack off... Dr. Fordham is watching! 👀",
+        "You're doing great, but Dr. Fordham demands excellence! 💪",
+        "Dr. Fordham says: ‘Keep pushing, scholar!’ 🧠",
+        "Uh oh… Dr. Fordham smells laziness. Prove him wrong! 😂",
+        "Stay sharp! Dr. Fordham knows all! 🧐"
+    ])
+
+def update_mastery(student_id, unit, is_correct):
+    if "mastery" not in st.session_state:
+        st.session_state.mastery = {}
+    if student_id not in st.session_state.mastery:
+        st.session_state.mastery[student_id] = {}
+    if unit not in st.session_state.mastery[student_id]:
+        st.session_state.mastery[student_id][unit] = []
+
+    if is_correct and len(st.session_state.mastery[student_id][unit]) < len(st.session_state.vocab[unit]):
+        st.session_state.mastery[student_id][unit].append(st.session_state.current_term)
+
+def calculate_progress(student_id, unit):
+    total = len(st.session_state.vocab.get(unit, []))
+    correct = len(st.session_state.mastery.get(student_id, {}).get(unit, []))
+    percent = (correct / total * 100) if total else 0
+    return int(percent) if percent % 1 < 0.5 else int(percent) + 1
+
+# --- App Pages ---
+def login():
+    st.title("Dr. Fordham's US History Lab")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        first = st.text_input("First Name")
+    with col2:
+        last = st.text_input("Last Name")
+
+    block = st.selectbox("Select Your Block", ["First", "Second", "Fourth"])
     if st.button("Login"):
-        if first and last and block:
-            st.session_state.student_name = f"{first.strip().title()} {last.strip().title()}"
+        if first and last:
+            student = f"{last.strip().title()}, {first.strip().title()}"
+            st.session_state.student = student
             st.session_state.block = block
-            st.session_state.page = "main_menu"
-            st.rerun()
-        else:
-            st.warning("Please fill in all fields.")
+            st.session_state.last_login = get_current_time()
+            st.session_state.page = "menu"
+            st.experimental_rerun()
 
-# Main menu
-def main_menu():
-    st.markdown(f"### Welcome, {st.session_state.student_name}!")
-    total_terms = 0
-    total_mastered = 0
-    unit_buttons = []
+def student_menu():
+    st.markdown(f"### Welcome, **{st.session_state.student}**")
+    st.markdown(f"**Block:** {st.session_state.block} | **Last Login:** {st.session_state.last_login}")
 
-    st.write("#### Select a Unit:")
-    cols = st.columns(4)
-    for i in range(1, 8):
-        unit = f"Unit {i}"
-        unit_buttons.append(cols[(i - 1) % 4].button(unit))
-    milestone_button = cols[3].button("Milestone Practice")
+    total_units = len(UNITS)
+    total_words = sum(len(st.session_state.vocab.get(unit, [])) for unit in UNITS)
+    total_correct = sum(len(st.session_state.mastery.get(st.session_state.student, {}).get(unit, [])) for unit in UNITS)
+    overall_progress = (total_correct / total_words * 100) if total_words else 0
+    if overall_progress % 1 >= 0.5:
+        overall_progress = int(overall_progress) + 1
+    else:
+        overall_progress = int(overall_progress)
 
-    # Overall progress bar
-    for i in range(1, 8):
-        df = load_vocab(f"Unit {i}")
-        terms = df["term"].tolist() if not df.empty else []
-        mastered = st.session_state.mastered_terms.get(f"Unit {i}", set())
-        total_terms += len(terms)
-        total_mastered += len(mastered)
+    st.markdown(f"#### Overall Progress: **{overall_progress}%**")
+    st.progress(overall_progress / 100)
 
-    if total_terms:
-        overall = int(round((total_mastered / total_terms) * 100))
-        st.progress(overall, text=f"Overall Progress: {overall}%")
+    col1, col2, col3 = st.columns(3)
+    for i, unit in enumerate(ALL_UNITS):
+        col = [col1, col2, col3][i % 3]
+        with col:
+            if st.button(unit):
+                st.session_state.unit = unit
+                st.session_state.current_term_index = 0
+                st.session_state.page = "chat"
+                st.experimental_rerun()
 
-    for i, clicked in enumerate(unit_buttons, 1):
-        if clicked:
-            st.session_state.unit = f"Unit {i}"
-            st.session_state.page = "unit_chat"
-            st.session_state.term_index = 0
-            st.session_state.chat_history = []
-            st.rerun()
-
-    if milestone_button:
-        st.session_state.unit = "Milestone"
-        st.session_state.page = "unit_chat"
-        st.session_state.term_index = 0
-        st.session_state.chat_history = []
-        st.rerun()
-
-    if st.button("Log Out"):
+    if st.button("Logout"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
-        st.session_state.page = "login"
-        st.rerun()
+        st.experimental_rerun()
 
-# Chat page
-def unit_chat():
-    st.button("⬅ Back to Main Menu", on_click=lambda: st.session_state.update({"page": "main_menu"}))
-    st.button("🚪 Log Out", on_click=lambda: st.session_state.update({"page": "login"}))
-
+def chat_page():
     unit = st.session_state.unit
-    df = load_vocab(unit if unit != "Milestone" else f"Unit {random.randint(1,7)}")
-    if df.empty:
-        st.warning("No vocabulary found.")
+    student = st.session_state.student
+    vocab_terms = st.session_state.vocab.get(unit, [])
+
+    if st.button("Back to Main Menu"):
+        st.session_state.page = "menu"
+        st.experimental_rerun()
+
+    st.markdown(f"### {unit} Vocabulary Practice")
+    unit_progress = calculate_progress(student, unit)
+    st.markdown(f"Progress: **{unit_progress}%**")
+    st.progress(unit_progress / 100)
+
+    if st.session_state.current_term_index >= len(vocab_terms):
+        st.success("🎉 You've completed this unit!")
         return
 
-    terms = df["term"].tolist()
-    defs = df["definition"].tolist()
-    mastered = st.session_state.mastered_terms.get(unit, set())
-    index = st.session_state.term_index
+    term = vocab_terms[st.session_state.current_term_index]
+    st.markdown(f"**🗣 Let's talk about the word: `{term['term']}`**")
+    user_input = st.text_input("What do you think it means?", key=term['term'])
 
-    # Progress bar
-    progress = calculate_unit_progress(terms, mastered)
-    st.progress(progress, text=f"Progress for {unit}: {progress}%")
+    if st.button("Submit"):
+        correct_def = term['definition']
+        if evaluate_response(user_input, correct_def):
+            update_mastery(student, unit, True)
+            st.success(f"✅ That's right! '{term['term']}' means: {correct_def}")
+        else:
+            st.warning(f"🤔 Not quite. '{term['term']}' actually means: {correct_def}")
+            st.info(f"{playful_reminder()}
+Try this: How do you think '{term['term']}' affected history?")
 
-    if index >= len(terms):
-        st.success(f"You've completed {unit}!")
-        return
+        st.session_state.current_term_index += 1
+        st.experimental_rerun()
 
-    term = terms[index]
-    correct_def = defs[index]
+# --- Load Vocabulary ---
+vocab_raw = load_vocab_data()
+if "vocab" not in st.session_state:
+    st.session_state.vocab = {}
+    for unit in ALL_UNITS:
+        if unit == MILESTONE:
+            combined = []
+            for u in UNITS:
+                combined += vocab_raw.get(u, pd.DataFrame()).sample(n=min(3, len(vocab_raw.get(u, []))), random_state=42).to_dict(orient="records")
+            st.session_state.vocab[unit] = combined
+        else:
+            st.session_state.vocab[unit] = vocab_raw.get(unit, pd.DataFrame()).to_dict(orient="records")
 
-    if st.session_state.chat_history:
-        for speaker, msg in st.session_state.chat_history:
-            with st.chat_message(speaker):
-                st.markdown(msg)
+# --- Page Routing ---
+if "page" not in st.session_state:
+    st.session_state.page = "login"
 
-    if st.session_state.term_index < len(terms):
-        with st.chat_message("assistant"):
-            prompt = f"Let's talk about the word **{term}**. What do you think it means?"
-            st.markdown(prompt)
-            st.session_state.chat_history.append(("assistant", prompt))
-
-        user_input = st.chat_input("Your answer:")
-        if user_input:
-            with st.chat_message("user"):
-                st.markdown(user_input)
-                st.session_state.chat_history.append(("user", user_input))
-
-            if user_input.lower() in correct_def.lower():
-                response = f"✅ That's right! **{term}** means: {correct_def}. Now let's apply it! {dr_fordham_says()}"
-                mastered.add(term)
-                st.session_state.mastered_terms[unit] = mastered
-                st.session_state.term_index += 1
-            else:
-                response = f"🤔 Not quite. **{term}** means: {correct_def}. Let's dig deeper. {dr_fordham_says()}"
-
-            with st.chat_message("assistant"):
-                st.markdown(response)
-                st.session_state.chat_history.append(("assistant", response))
-            st.rerun()
-
-# Route logic
 if st.session_state.page == "login":
-    login_page()
-elif st.session_state.page == "main_menu":
-    main_menu()
-elif st.session_state.page == "unit_chat":
-    unit_chat()
+    login()
+elif st.session_state.page == "menu":
+    student_menu()
+elif st.session_state.page == "chat":
+    chat_page()
