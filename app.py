@@ -87,12 +87,12 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
 
             # Load vocab for Unit 1
             vocab_df = pd.read_csv("vocab.csv")
-    vocab_list = vocab_df["term"].tolist()
-    if "current_term_index" not in st.session_state:
+        vocab_list = vocab_df["term"].tolist()
+        if "current_term_index" not in st.session_state:
         st.session_state.current_term_index = 0
         st.session_state.chat_history = []
 
-    if st.session_state.current_term_index < len(vocab_list):
+        if st.session_state.current_term_index < len(vocab_list):
         term = vocab_list[st.session_state.current_term_index]
         st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
 
@@ -119,7 +119,7 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
                 st.session_state.chat_history.append(("assistant", response))
                 with st.chat_message("assistant"):
                     st.markdown(response)
-    else:
+        else:
         st.balloons()
         st.success("🎉 You've finished all Unit 1 vocabulary!")
 
