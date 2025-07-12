@@ -46,22 +46,39 @@ if admin_pw == "letmein":
 
 # ---------------- STUDENT MODE ----------------
 if "student_name" not in st.session_state:
-    name = st.text_input("Enter your name to begin:")
-    if name:
-        st.session_state.student_name = name.strip()
-        st.rerun()
+    with st.form("name_form"):
+        first = st.text_input("First Name")
+        last = st.text_input("Last Name")
+        submitted = st.form_submit_button("Start")
+        if submitted and first and last:
+            full_name = f"{first.strip()} {last.strip()}"
+            st.session_state.student_name = full_name
+            st.rerun()
     st.stop()
 
 name = st.session_state.student_name
 vocab = load_vocab()
+mastery_data = load_database()
+
+# Filter out terms already mastered by this student
+mastered_terms = mastery_data[(mastery_data["student"] == name) & (mastery_data["mastered"] == True)]["term"].tolist()
+remaining_vocab = vocab[~vocab["term"].isin(mastered_terms)].reset_index(drop=True)
+total_vocab = len(vocab)
+mastered_count = len(mastery_data[(mastery_data["student"] == name) & (mastery_data["mastered"] == True)])
+progress_pct = (mastered_count / total_vocab) * 100
+
+# Show progress bar
+st.sidebar.markdown(f"### Progress for {name}")
+st.sidebar.progress(int(progress_pct))
+st.sidebar.markdown(f"**{mastered_count} / {total_vocab}** terms mastered ({int(progress_pct)}%)")
 
 if "index" not in st.session_state:
     st.session_state.index = 0
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if st.session_state.index < len(vocab):
-    row = vocab.iloc[st.session_state.index]
+if st.session_state.index < len(remaining_vocab):
+    row = remaining_vocab.iloc[st.session_state.index]
     term = row["term"]
     definition = row["definition"]
     example = row["example_usage"]
@@ -109,7 +126,6 @@ if st.session_state.index < len(vocab):
             st.markdown(reply)
 
         if "you got it" in reply.lower() or "let’s move on" in reply.lower():
-            mastery_data = load_database()
             new_row = pd.DataFrame([{
                 "student": name,
                 "term": term,
