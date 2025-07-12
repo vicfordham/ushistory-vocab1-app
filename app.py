@@ -4,47 +4,13 @@ import pandas as pd
 import os
 from datetime import datetime
 
-st.set_page_config(page_title="U.S. History Vocab", layout="wide")
+st.set_page_config(page_title="U.S. History Vocab Mastery", layout="wide")
 
-# Custom CSS
-st.markdown("""
-<style>
-.stButton>button {
-    border-radius: 12px;
-    font-weight: bold;
-    padding: 0.75em 1.5em;
-    margin: 0.25em;
-    background: linear-gradient(to right, #6dd5ed, #2193b0);
-    color: white;
-    font-size: 1.1em;
-    border: none;
-}
-.title {
-    font-size: 2em;
-    font-weight: 700;
-    color: #2c3e50;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Load vocab data
-@st.cache_data
-def load_vocab_data():
-    try:
-        df = pd.read_excel("vocab.xlsx", sheet_name=None)
-        return df
-    except Exception as e:
-        st.error(f"Error loading vocab.xlsx: {e}")
-        return {}
-
-vocab_data = load_vocab_data()
-units = list(vocab_data.keys())
-
-# Initialize session state
-if "student_name" not in st.session_state:
-    st.session_state.student_name = ""
+# Session state initialization
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+if "student_name" not in st.session_state:
+    st.session_state.student_name = ""
 if "unit_selected" not in st.session_state:
     st.session_state.unit_selected = None
 if "current_term_index" not in st.session_state:
@@ -52,97 +18,118 @@ if "current_term_index" not in st.session_state:
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+# Load vocabulary data
+def load_vocab(unit_tab):
+    try:
+        df = pd.read_excel("vocab.xlsx", sheet_name=unit_tab)
+        return df
+    except Exception as e:
+        st.error(f"Could not load vocabulary for {unit_tab}: {e}")
+        return pd.DataFrame()
+
 # Login page
 def login_page():
-    st.title("🧠 U.S. History Vocabulary Tool")
-    st.subheader("Please log in to get started.")
-    first = st.text_input("First Name")
-    last = st.text_input("Last Name")
-    if st.button("Login"):
-        if first and last:
-            st.session_state.student_name = f"{first.strip().title()} {last.strip().title()}"
+    st.title("📚 U.S. History Vocab Mastery - Login")
+    first_name = st.text_input("First Name")
+    last_name = st.text_input("Last Name")
+    if st.button("Log in"):
+        if first_name and last_name:
+            st.session_state.student_name = f"{first_name.strip().title()} {last_name.strip().title()}"
             st.session_state.logged_in = True
             st.experimental_rerun()
-        else:
-            st.warning("Please enter both first and last name.")
 
-# Main menu
+# Main menu with Unit buttons
 def main_menu():
-    st.title(f"Welcome, {st.session_state.student_name}!")
-    st.subheader("Select a Unit to Begin:")
-    cols = st.columns(4)
-    for i, unit in enumerate(units):
-        if cols[i % 4].button(unit):
-            st.session_state.unit_selected = unit
-            st.session_state.current_term_index = 0
-            st.session_state.chat_history = []
-            st.experimental_rerun()
-    st.button("Log out", on_click=logout)
+    st.title(f"Welcome, {st.session_state.student_name} 👋")
+    st.subheader("📖 Choose a Unit")
+    col1, col2, col3, col4 = st.columns(4)
+    units = [f"Unit {i}" for i in range(1, 8)]
+    with col1:
+        for i in range(0, 2):
+            if st.button(units[i]):
+                st.session_state.unit_selected = units[i]
+                st.experimental_rerun()
+    with col2:
+        for i in range(2, 4):
+            if st.button(units[i]):
+                st.session_state.unit_selected = units[i]
+                st.experimental_rerun()
+    with col3:
+        for i in range(4, 6):
+            if st.button(units[i]):
+                st.session_state.unit_selected = units[i]
+                st.experimental_rerun()
+    with col4:
+        for i in range(6, 7):
+            if st.button(units[i]):
+                st.session_state.unit_selected = units[i]
+                st.experimental_rerun()
+    st.markdown("---")
+    if st.button("Log out"):
+        st.session_state.logged_in = False
+        st.session_state.student_name = ""
+        st.session_state.unit_selected = None
+        st.session_state.current_term_index = 0
+        st.session_state.chat_history = []
+        st.experimental_rerun()
 
-# Logout
-def logout():
-    st.session_state.logged_in = False
-    st.session_state.student_name = ""
-    st.session_state.unit_selected = None
-    st.session_state.current_term_index = 0
-    st.session_state.chat_history = []
-    st.experimental_rerun()
+# Unit page with vocab interaction
+def unit_page():
+    unit = st.session_state.unit_selected
+    st.title(f"{unit} Vocabulary")
+    if st.button("⬅ Back to Main Menu"):
+        st.session_state.unit_selected = None
+        st.session_state.current_term_index = 0
+        st.session_state.chat_history = []
+        st.experimental_rerun()
+    if st.button("Log out"):
+        st.session_state.logged_in = False
+        st.session_state.student_name = ""
+        st.session_state.unit_selected = None
+        st.session_state.current_term_index = 0
+        st.session_state.chat_history = []
+        st.experimental_rerun()
 
-# Unit page
-def unit_page(unit_name):
-    st.markdown(f"### Unit: {unit_name}")
-    st.button("⬅️ Back to Menu", on_click=go_back)
-    st.button("🚪 Log out", on_click=logout)
-    
-    vocab_df = vocab_data.get(unit_name)
-    if vocab_df is None:
-        st.error(f"Could not load vocabulary for {unit_name}.")
+    vocab_df = load_vocab(unit)
+    if vocab_df.empty:
         return
 
-    vocab_list = vocab_df["term"].tolist()
-    definitions = dict(zip(vocab_df["term"], vocab_df["definition"]))
+    vocab_list = vocab_df.to_dict("records")
+    if st.session_state.current_term_index >= len(vocab_list):
+        st.success("🎉 You've completed all terms in this unit!")
+        return
 
-    # Progress bar
-    progress = (st.session_state.current_term_index) / len(vocab_list)
-    st.progress(progress)
+    term_data = vocab_list[st.session_state.current_term_index]
+    term = term_data["term"]
+    correct_def = term_data["definition"]
 
-    # Current term
-    if st.session_state.current_term_index < len(vocab_list):
-        term = vocab_list[st.session_state.current_term_index]
-        correct_def = definitions[term]
+    st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
 
-        st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+    for speaker, message in st.session_state.chat_history:
+        with st.chat_message(speaker):
+            st.markdown(message)
 
-        # Chat history
-        for role, msg in st.session_state.chat_history:
-            with st.chat_message(role):
-                st.markdown(msg)
+    user_input = st.chat_input("Type your response...")
+    if user_input:
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        st.session_state.chat_history.append(("user", user_input))
 
-        user_input = st.chat_input("What do you think it means?")
-        if user_input:
-            if user_input.lower() in correct_def.lower():
-                response = f"✅ That's right! '{term}' means: {correct_def}."
-                st.session_state.current_term_index += 1
-            else:
-                response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
+        if user_input.lower() in correct_def.lower():
+            response = f"✅ That's right! '{term}' means: {correct_def}. Great work!"
+            st.session_state.current_term_index += 1
+            st.session_state.chat_history = []
+        else:
+            response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
 
-            st.session_state.chat_history.append(("user", user_input))
-            st.session_state.chat_history.append(("assistant", response))
-            st.experimental_rerun()
-    else:
-        st.success("🎉 You've completed this unit!")
+        with st.chat_message("assistant"):
+            st.markdown(response)
+        st.session_state.chat_history.append(("assistant", response))
 
-def go_back():
-    st.session_state.unit_selected = None
-    st.session_state.chat_history = []
-    st.session_state.current_term_index = 0
-    st.experimental_rerun()
-
-# App control flow
+# App logic
 if not st.session_state.logged_in:
     login_page()
 elif st.session_state.unit_selected:
-    unit_page(st.session_state.unit_selected)
+    unit_page()
 else:
     main_menu()
-
