@@ -69,8 +69,8 @@ if st.button("🚪 Logout"):
     st.experimental_rerun()
 
 if st.session_state.get("logged_in"):
-    if "unit_selected" in st.session_state and st.session_state.unit_selected:
-        unit = st.session_state.unit_selected
+        if "unit_selected" in st.session_state and st.session_state.unit_selected:
+            unit = st.session_state.unit_selected
 
 if unit == "Unit 1":
     # Load vocab
@@ -83,8 +83,8 @@ if "current_term_index" not in st.session_state:
     st.session_state.chat_history = []
 
 # If terms remain
-if st.session_state.current_term_index < len(vocab_list):
-    term = vocab_list[st.session_state.current_term_index]
+    if "vocab_list" in st.session_state and st.session_state.current_term_index < len(st.session_state.vocab_list):
+        term = vocab_list[st.session_state.current_term_index]
     if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
         term = st.session_state.vocab_list[st.session_state.current_term_index]
 
