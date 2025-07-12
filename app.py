@@ -68,7 +68,9 @@ if st.button("🚪 Logout"):
         del st.session_state[key]
     st.experimental_rerun()
 
-unit = st.session_state.unit_selected
+if st.session_state.get("logged_in"):
+    if "unit_selected" in st.session_state and st.session_state.unit_selected:
+        unit = st.session_state.unit_selected
 
 if unit == "Unit 1":
     # Load vocab
