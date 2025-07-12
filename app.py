@@ -154,8 +154,13 @@ def chat_session(unit):
             f"Term: {term['term']}\nDefinition: {term['definition']}\nExample: {term['example']}\n"
             f"Student says: {user_input}\nEvaluate correctness, ask follow-up if needed."
         )
-        messages = [{'role':'system','content':'You are a helpful tutor.'}] + st.session_state.messages
-        completion = openai.ChatCompletion.create(model="gpt-4o-mini", messages=messages)
+        # Use new OpenAI v2 API endpoint
+        messages_payload = [{'role': 'system', 'content': 'You are a helpful tutor.'}]
+        messages_payload += [{'role': m['role'], 'content': m['content']} for m in st.session_state.messages]
+        completion = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages_payload
+        )
         reply = completion.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
 
@@ -204,8 +209,7 @@ def teacher_main():
             if not records:
                 st.info('No students found in this block.')
             else:
-                df = pd.DataFrame(records)
-                df = df.sort_values('Last Name')
+                df = pd.DataFrame(records).sort_values('Last Name')
                 edited = st.experimental_data_editor(df, num_rows='dynamic')
                 if st.button(f'Download {block} Data'):
                     towrite = pd.ExcelWriter(f'block_{block}.xlsx', engine='xlsxwriter')
