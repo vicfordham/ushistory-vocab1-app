@@ -42,7 +42,7 @@ if not st.session_state.student_name:
     block = st.selectbox("Select Your Block", ["First", "Second", "Fourth"])
     if st.button("Enter"):
         if first_name and last_name:
-            st.session_state.student_name = f"{first_name} {last_name}"
+            st.session_state.student_name = f"{first_name.strip().title()} {last_name.strip().title()}"
             st.session_state.block = block
             st.session_state.login_time = datetime.now().isoformat()
         else:
@@ -59,13 +59,28 @@ unit_selected = None
 
 for i, unit in enumerate(units):
     if cols[i % 4].button(unit):
-        unit_selected = unit
+        st.session_state.unit_selected = unit
 
 # Quiz Button
 if st.button("🎯 Final Quiz (50 Random Words)"):
     st.info("Quiz mode coming soon!")
 
-# Simulate Unit 1 session
+
+# Route to unit page if selected
+if "unit_selected" in st.session_state and st.session_state.unit_selected:
+    if st.button("🔙 Back to Unit Menu"):
+        del st.session_state.unit_selected
+        st.experimental_rerun()
+
+    if st.button("🚪 Logout"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.experimental_rerun()
+
+    unit = st.session_state.unit_selected
+    st.markdown(f"### ✏️ {unit} Vocabulary")
+    if unit == "Unit 1":
+
 if unit_selected == "Unit 1":
     st.markdown("### ✏️ Unit 1 Vocabulary")
 
