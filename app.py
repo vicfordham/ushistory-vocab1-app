@@ -99,11 +99,13 @@ def student_main():
     overall_pct = int(round((mastered/total_terms)*100)) if total_terms else 0
     st.progress(overall_pct/100)
     st.caption(f'Overall Progress: {overall_pct}%')
+
     cols = st.columns(4)
     for idx, unit in enumerate(units):
         if cols[idx%4].button(unit):
             st.session_state.unit = unit
             st.experimental_rerun()
+
     st.markdown('---')
     if st.button('Milestone Practice'):
         st.session_state.unit = 'Milestone'
@@ -116,7 +118,8 @@ def student_main():
 def chat_session(unit):
     user = st.session_state.user
     st.sidebar.button('Back to Menu', on_click=back_to_menu)
-    # select terms
+
+    # Select term list
     if unit in units:
         df_terms = vocab[unit]
     elif unit == 'Milestone':
@@ -125,61 +128,62 @@ def chat_session(unit):
             samples += vocab[u].sample(2).to_dict('records')
         df_terms = pd.DataFrame(samples)
     else:
-        # Special not implemented here
         st.header('Special Project')
         st.info('Coming soon.')
         return
-    # setup session_state indices
+
+    # Initialize state
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    # initial question
+
+    # Start by asking student without giving definition
     if not st.session_state.messages:
         term0 = df_terms.iloc[0]
-        init_q = (f"Let's begin with the first term: '{term0['term']}'.\n"
-                  f"Definition: {term0['definition']}\n"
-                  f"Example: {term0['example']}\n"
-                  "In your own words, what does this term mean?")
+        init_q = f"What do you think the word '{term0['term']}' means?"
         st.session_state.messages.append({'role':'assistant','content':init_q})
-    # display chat history
+
+    # Display progress header
     st.header(unit)
     prog_df = get_student_progress(user['first'], user['last'], user['block'])
     total = len(df_terms)
     mastered = prog_df[prog_df['unit']==unit]['mastered'].sum() if unit in units else 0
-    pct = int(round((mastered/total)*100)) if total else 0
+    pct = int(round(mastered/total*100)) if total else 0
     st.progress(pct/100)
     st.caption(f'Progress for {unit}: {pct}%')
+
+    # Render chat history
     for msg in st.session_state.messages:
         st.chat_message(msg['role']).write(msg['content'])
-    # user input
+
+    # Accept user reply
     user_input = st.chat_input('Your response...')
     if user_input:
         st.session_state.messages.append({'role':'user','content':user_input})
         term = df_terms.iloc[st.session_state.current_index]
-        system_msg = {'role':'system','content':'You are a helpful history vocabulary tutor.'}
-        messages_payload = [system_msg] + st.session_state.messages
-        completion = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages_payload
-        )
+        # Build conversation for model
+        system_msg = {'role':'system','content':'You are a helpful history vocabulary tutor. Ask follow-up questions as needed, and recognize partial correctness.'}
+        payload = [system_msg] + st.session_state.messages
+        completion = openai.chat.completions.create(model="gpt-4o-mini", messages=payload)
         reply = completion.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
-        # record mastery if indicated
+
+        # If student shows mastery, record and move to next term
         if 'correct' in reply.lower() and unit in units:
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
-            c.execute('INSERT OR REPLACE INTO progress VALUES (?,?,?,?,?,1)',
+            c.execute('INSERT OR REPLACE INTO progress (first_name,last_name,block,unit,term,mastered) VALUES (?,?,?,?,?,1)',
                       (user['first'], user['last'], user['block'], unit, term['term']))
             conn.commit()
             conn.close()
             st.session_state.current_index += 1
             if st.session_state.current_index < len(df_terms):
                 next_term = df_terms.iloc[st.session_state.current_index]
-                next_q = f"Next term: '{next_term['term']}'. In your own words?"
+                next_q = f"Great! Now, what do you think '{next_term['term']}' means?"
                 st.session_state.messages.append({'role':'assistant','content':next_q})
             else:
-                st.session_state.messages.append({'role':'assistant','content':f"You've completed {unit}!"})
+                st.session_state.messages.append({'role':'assistant','content':f"Congratulations! You've completed {unit}!"})
         st.experimental_rerun()
 
 # --- Teacher View ---
@@ -191,25 +195,24 @@ def teacher_main():
     students_df = pd.read_sql('SELECT * FROM students', conn)
     prog_df = pd.read_sql('SELECT * FROM progress', conn)
     conn.close()
+
     for i, block in enumerate(['First','Second','Fourth']):
         with tabs[i]:
             st.header(f'Block {block} Gradebook')
             blk = students_df[students_df['block']==block]
             records = []
-            for _,r in blk.iterrows():
+            for _, r in blk.iterrows():
                 fname, lname = r['first_name'], r['last_name']
-                row = {'Last Name':lname,'First Name':fname,'Last Login':r['last_login']}
-                pr = prog_df[(prog_df.first_name==fname)&(prog_df.last_name==lname)&(prog_df.block==block)]
+                row = {'Last Name': lname, 'First Name': fname, 'Last Login': r['last_login']}
+                pr = prog_df[(prog_df['first_name']==fname)&(prog_df['last_name']==lname)&(prog_df['block']==block)]
                 for u in units:
-                    pct = int(round(pr[pr.unit==u]['mastered'].sum()/len(vocab[u])*100)) if len(vocab[u])>0 else 0
+                    pct = int(round(pr[pr['unit']==u]['mastered'].sum()/len(vocab[u])*100)) if len(vocab[u])>0 else 0
                     row[u] = pct
                 total = sum(len(vocab[u]) for u in units)
-                mastered = pr.mastered.sum()
+                mastered = pr['mastered'].sum()
                 row['Overall'] = int(round(mastered/total*100)) if total else 0
                 records.append(row)
-            if not records:
-                st.info('No students in this block.')
-            else:
+            if records:
                 df = pd.DataFrame(records).sort_values('Last Name')
                 edited = st.experimental_data_editor(df)
                 if st.button(f'Download {block} Data'):
@@ -218,8 +221,10 @@ def teacher_main():
                     towrite.close()
                     with open(f'{block}_data.xlsx','rb') as f:
                         st.download_button('Download Excel', f, file_name=f'{block}_data.xlsx')
+            else:
+                st.info('No students in this block.')
 
-# --- Navigation ---
+# --- Navigation Helpers ---
 def logout():
     for k in list(st.session_state.keys()): del st.session_state[k]
     st.experimental_rerun()
@@ -232,7 +237,9 @@ def back_to_menu():
 if st.session_state.role is None:
     show_login()
 elif st.session_state.role=='student':
-    if 'unit' not in st.session_state: student_main()
-    else: chat_session(st.session_state.unit)
+    if 'unit' not in st.session_state:
+        student_main()
+    else:
+        chat_session(st.session_state.unit)
 elif st.session_state.role=='teacher':
     teacher_main()
