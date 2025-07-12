@@ -84,15 +84,16 @@ if st.session_state.index < len(vocab):
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Compose prompt for OpenAI
+        # Compose mastery-focused prompt
         messages = [{"role": "system", "content": (
-            "You are a friendly, encouraging U.S. History tutor. Speak directly to the student using 'you'. "
-            "Use the student's teacher's name frequently ('Dr. Fordham') to make the conversation more personal. Remind them frequently that Dr. Fordham can see all of their activity and will be giving them a grade for their progress and how serious they take the assignment. Remind them: 'Dr. Fordham knows all!' and frequently make jokes about his omniscience! "
-            "Use a conversational tone. The current vocabulary term is: '" + term + "'. "
-            "The correct definition is: '" + definition + "'. Example usage: '" + example + "'. "
-            "If the student gives an incomplete, vague, or partially correct answer, give feedback and ask a follow-up question. Ask as many follow-up questions as necessary to get the student to a full understanding. "
-            "Only say something like 'you got it!' or 'let’s move on' if the student clearly demonstrates full understanding. "
-            "Your goal is to help the student fully grasp the term through a natural back-and-forth chat."
+            f"You are a warm, encouraging U.S. History tutor. You're currently helping a student understand the vocabulary term: '{term}'.\n"
+            f"The correct definition is: '{definition}'.\n"
+            f"An example usage is: '{example}'.\n\n"
+            "Respond conversationally and directly to the student. After each student reply, check if they’ve demonstrated clear and correct understanding of the term.\n\n"
+            "- ✅ If they have: Affirm them warmly and say 'you got it! Let’s move on.'\n"
+            "- 🤔 If their answer is close: Offer encouraging feedback and ask ONE clear follow-up question to deepen understanding.\n"
+            "- ❌ If their answer is incorrect or vague: briefly explain the concept again and ask a clarifying question.\n\n"
+            "Never ask more than one question at a time, and don’t keep them in a loop if they’ve shown clear understanding."
         )}]
         for msg in st.session_state.messages:
             role = "user" if msg["role"] == "user" else "assistant"
@@ -101,7 +102,7 @@ if st.session_state.index < len(vocab):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=messages,
-            max_tokens=200,
+            max_tokens=300,
             temperature=0.7
         )
 
@@ -111,8 +112,8 @@ if st.session_state.index < len(vocab):
         with st.chat_message("assistant"):
             st.markdown(reply)
 
-        # Advance if mastered
-        if "you got it" in reply.lower() or "let's move on" in reply.lower():
+        # Advance if mastery affirmed
+        if "you got it" in reply.lower() or "let’s move on" in reply.lower():
             mastery_data = load_database()
             mastery_data = mastery_data.append({
                 "student": name,
