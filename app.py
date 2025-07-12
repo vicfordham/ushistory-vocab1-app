@@ -3,101 +3,124 @@ import streamlit as st
 import pandas as pd
 from openai import OpenAI
 import os
+from datetime import datetime
 
 # Set up OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Use updated cache syntax
+# Load or initialize the student mastery database
+def load_database():
+    try:
+        return pd.read_csv("mastery_data.csv")
+    except FileNotFoundError:
+        return pd.DataFrame(columns=["student", "term", "mastered", "timestamp"])
+
+def save_database(df):
+    df.to_csv("mastery_data.csv", index=False)
+
 @st.cache_data
 def load_vocab():
     return pd.read_csv("vocab.csv")
 
-vocab = load_vocab()
+# ---------------- APP START ----------------
+st.set_page_config(page_title="History Vocab Tutor", layout="centered")
+st.title("📘 U.S. History Vocabulary Tutor")
 
-st.title("📘 U.S. History Vocab Mastery Tool")
+# Sidebar for teacher login
+st.sidebar.title("Teacher Login")
+admin_pw = st.sidebar.text_input("Enter teacher password", type="password")
+if admin_pw == "letmein":
+    st.sidebar.success("Access granted.")
+    st.subheader("📊 Teacher Dashboard")
+    data = load_database()
+    if data.empty:
+        st.info("No student data yet.")
+    else:
+        summary = data[data["mastered"] == True].groupby("student")["term"].count().reset_index()
+        total_terms = len(load_vocab())
+        summary["Total Terms"] = total_terms
+        summary["Grade (%)"] = (summary["term"] / total_terms * 100).round(1)
+        summary.rename(columns={"term": "Mastered Terms"}, inplace=True)
+        st.dataframe(summary)
+    st.stop()
+
+# ---------------- STUDENT MODE ----------------
+if "student_name" not in st.session_state:
+    name = st.text_input("Enter your name to begin:")
+    if name:
+        st.session_state.student_name = name.strip()
+        st.rerun()
+    st.stop()
+
+name = st.session_state.student_name
+vocab = load_vocab()
 
 if "index" not in st.session_state:
     st.session_state.index = 0
-if "mastered" not in st.session_state:
-    st.session_state.mastered = set()
-if "awaiting_retry" not in st.session_state:
-    st.session_state.awaiting_retry = False
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 if st.session_state.index < len(vocab):
     row = vocab.iloc[st.session_state.index]
     term = row["term"]
-    correct_definition = row["definition"]
+    definition = row["definition"]
     example = row["example_usage"]
 
-    st.header(f"Term: {term}")
+    # Start new term if chat empty
+    if not st.session_state.messages:
+        system_msg = f"Let's talk about the word **{term}**. What do you think it means?"
+        st.session_state.messages.append({"role": "assistant", "content": system_msg})
 
-    if not st.session_state.awaiting_retry:
-        answer = st.text_input("What does this mean?", key=f"answer_{st.session_state.index}")
+    # Display chat history using chat UI
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-        if st.button("Submit"):
-            with st.spinner("Evaluating your response..."):
-                user_message = (
-                    f"The student was asked to define '{term}'.\n\n"
-                    f"Student answer: '{answer}'\n\n"
-                    f"Correct definition: '{correct_definition}'\n\n"
-                    "Evaluate their answer. Is it correct, close, or incorrect? "
-                    "Give brief feedback. If it’s close, ask a follow-up question to deepen their understanding. "
-                    "If it's fully correct, say so and tell them they can move on."
-                )
+    # Chat input at bottom
+    prompt = st.chat_input("Type your answer...")
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
 
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You're a U.S. History teacher evaluating student vocabulary answers."},
-                        {"role": "user", "content": user_message}
-                    ],
-                    max_tokens=200,
-                    temperature=0.7
-                )
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-                feedback = response.choices[0].message.content
-                st.session_state.last_feedback = feedback
+        # Compose prompt for OpenAI
+        messages = [{"role": "system", "content": (
+            "You are a friendly, encouraging U.S. History tutor. "
+            "Speak directly to the student using 'you'. "
+            "Sound conversational. Engage in back-and-forth dialogue about vocabulary. "
+            f"Current word: '{term}'. Correct definition: '{definition}'. Example: '{example}'."
+        )}]
+        for msg in st.session_state.messages:
+            role = "user" if msg["role"] == "user" else "assistant"
+            messages.append({"role": role, "content": msg["content"]})
 
-                if "fully correct" in feedback.lower() or "you can move on" in feedback.lower():
-                    st.success("✅ Great job! Moving on...")
-                    st.session_state.mastered.add(term)
-                    st.session_state.index += 1
-                    st.session_state.awaiting_retry = False
-                    st.experimental_rerun()
-                else:
-                    st.info(f"💬 {feedback}")
-                    st.session_state.awaiting_retry = True
-    else:
-        retry_input = st.text_input("Your follow-up answer:", key=f"retry_{st.session_state.index}")
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=200,
+            temperature=0.7
+        )
 
-        if st.button("Try Again"):
-            with st.spinner("Re-evaluating your follow-up..."):
-                retry_message = (
-                    f"The student was asked to define '{term}'.\n\n"
-                    f"Their revised answer is: '{retry_input}'\n\n"
-                    f"Correct definition: '{correct_definition}'\n\n"
-                    "Evaluate their revised answer. If correct, tell them they got it and can move on. "
-                    "If still not fully correct, explain clearly and ask one final clarifying question."
-                )
+        reply = response.choices[0].message.content
+        st.session_state.messages.append({"role": "assistant", "content": reply})
 
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You're a U.S. History teacher evaluating student vocabulary answers."},
-                        {"role": "user", "content": retry_message}
-                    ],
-                    max_tokens=200,
-                    temperature=0.7
-                )
-                feedback = response.choices[0].message.content
-                st.info(f"💬 {feedback}")
+        with st.chat_message("assistant"):
+            st.markdown(reply)
 
-                if "fully correct" in feedback.lower() or "you can move on" in feedback.lower():
-                    st.success("✅ Got it! Moving on...")
-                    st.session_state.mastered.add(term)
-                    st.session_state.index += 1
-                    st.session_state.awaiting_retry = False
-                    st.experimental_rerun()
+        # Advance if mastered
+        if "you got it" in reply.lower() or "let's move on" in reply.lower():
+            mastery_data = load_database()
+            mastery_data = mastery_data.append({
+                "student": name,
+                "term": term,
+                "mastered": True,
+                "timestamp": datetime.now().isoformat()
+            }, ignore_index=True)
+            save_database(mastery_data)
+            st.session_state.index += 1
+            st.session_state.messages = []
+            st.rerun()
 else:
+    st.success("🎉 You've completed all the vocabulary terms!")
     st.balloons()
-    st.success("🎉 You've completed the vocabulary list!")
