@@ -20,6 +20,8 @@ if "index" not in st.session_state:
     st.session_state.index = 0
 if "mastered" not in st.session_state:
     st.session_state.mastered = set()
+if "awaiting_retry" not in st.session_state:
+    st.session_state.awaiting_retry = False
 
 if st.session_state.index < len(vocab):
     row = vocab.iloc[st.session_state.index]
@@ -28,31 +30,69 @@ if st.session_state.index < len(vocab):
     example = row["example_usage"]
 
     st.header(f"Term: {term}")
-    answer = st.text_input("What does this mean?", key="answer")
 
-    if st.button("Submit"):
-        if answer.lower() in correct_definition.lower():
-            st.success("✅ Correct!")
-            st.session_state.mastered.add(term)
-            st.session_state.index += 1
-            st.experimental_rerun()
-        else:
-            st.error("❌ Not quite.")
-            st.markdown(f"**Correct Definition:** {correct_definition}")
-            st.markdown(f"**Example:** {example}")
+    if not st.session_state.awaiting_retry:
+        answer = st.text_input("What does this mean?", key=f"answer_{st.session_state.index}")
 
-            with st.spinner("Explaining with AI..."):
+        if st.button("Submit"):
+            with st.spinner("Evaluating your response..."):
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": "You're a U.S. History tutor for middle and high school students."},
-                        {"role": "user", "content": f"Explain the term '{term}' clearly, since the student got it wrong. Use examples and simple language."}
+                        {"role": "system", "content": "You're a U.S. History teacher evaluating student vocabulary answers."},
+                        {"role": "user", "content": f"The student was asked to define '{term}'.
+
+Student answer: '{answer}'
+
+Correct definition: '{correct_definition}'
+
+Evaluate their answer. Is it correct, close, or incorrect? Give brief feedback. If it’s close, ask a follow-up question to deepen their understanding. If it's fully correct, say so and tell them they can move on."}
                     ],
-                    max_tokens=150,
+                    max_tokens=200,
                     temperature=0.7
                 )
-                explanation = response.choices[0].message.content
-                st.info(f"💡 AI Explanation: {explanation}")
+
+                feedback = response.choices[0].message.content
+                st.session_state.last_feedback = feedback
+
+                if "fully correct" in feedback.lower() or "you can move on" in feedback.lower():
+                    st.success("✅ Great job! Moving on...")
+                    st.session_state.mastered.add(term)
+                    st.session_state.index += 1
+                    st.session_state.awaiting_retry = False
+                    st.experimental_rerun()
+                else:
+                    st.info(f"💬 {feedback}")
+                    st.session_state.awaiting_retry = True
+    else:
+        retry_input = st.text_input("Your follow-up answer:", key=f"retry_{st.session_state.index}")
+
+        if st.button("Try Again"):
+            with st.spinner("Re-evaluating your follow-up..."):
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You're a U.S. History teacher evaluating student vocabulary answers."},
+                        {"role": "user", "content": f"The student was asked to define '{term}'.
+
+Their revised answer is: '{retry_input}'
+
+Correct definition: '{correct_definition}'
+
+Evaluate their revised answer. If correct, tell them they got it and can move on. If still not fully correct, explain clearly and ask one final clarifying question."}
+                    ],
+                    max_tokens=200,
+                    temperature=0.7
+                )
+                feedback = response.choices[0].message.content
+                st.info(f"💬 {feedback}")
+
+                if "fully correct" in feedback.lower() or "you can move on" in feedback.lower():
+                    st.success("✅ Got it! Moving on...")
+                    st.session_state.mastered.add(term)
+                    st.session_state.index += 1
+                    st.session_state.awaiting_retry = False
+                    st.experimental_rerun()
 else:
     st.balloons()
     st.success("🎉 You've completed the vocabulary list!")
