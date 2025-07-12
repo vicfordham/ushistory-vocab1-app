@@ -43,7 +43,7 @@ if st.session_state.index < len(vocab):
 
             with st.spinner("Explaining with AI..."):
                 response = client.chat.completions.create(
-                    model="gpt-4",
+                    model="gpt-3.5-turbo",
                     messages=[
                         {"role": "system", "content": "You're a U.S. History tutor for middle and high school students."},
                         {"role": "user", "content": f"Explain the term '{term}' clearly, since the student got it wrong. Use examples and simple language."}
