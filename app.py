@@ -172,11 +172,11 @@ if "student_name" not in st.session_state:
                                                                                                                                                         response = f"✅ That's correct! '{term}' means: {correct_def}"
                                                                                                                                                         with st.chat_message("assistant"):
                                                                                                                                                             st.markdown(response)
-            else:
-                response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
-                with st.chat_message("assistant"):
-                    st.markdown(response)
+        else:
+            response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
+            with st.chat_message("assistant"):
+                st.markdown(response)
 
 
-                                                                                                                                                                st.success("🎉 You've finished all Unit 1 vocabulary!")
+st.success("🎉 You've finished all Unit 1 vocabulary!")
 
