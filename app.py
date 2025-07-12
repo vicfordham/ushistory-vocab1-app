@@ -158,7 +158,7 @@ def chat_session(unit):
     if user_input:
         st.session_state.messages.append({'role': 'user', 'content': user_input})
         term = df_terms.iloc[st.session_state.current_index]['term']
-        system = {'role': 'system', 'content': 'You are a patient tutor asking follow-up questions and recognizing partial answers.'}
+        system = {'role': 'system', 'content': 'You are a patient AI tutor. You may answer student questions with hints or clarifications, but never provide the full definition outright. Guide the student with follow-up questions toward understanding. Recognize partial correctness and, when the student clearly demonstrates mastery, respond exactly with "correct" to move on.'}
         payload = [system] + st.session_state.messages
         comp = openai.chat.completions.create(model='gpt-4o-mini', messages=payload)
         reply = comp.choices[0].message.content
