@@ -99,10 +99,6 @@ if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
         st.session_state.chat_history.append(("user", user_input))
-else:
-    st.session_state.chat_history.append(("assistant", response))
-    with st.chat_message("assistant"):
-        st.markdown(response)
 
 
 
