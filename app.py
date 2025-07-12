@@ -158,7 +158,7 @@ if user_input:
 
                                                                                                                                                                             # AI Evaluation (simple rule-based for now)
                                                                                                                                                                             correct_def = vocab_df[vocab_df["term"] == term]["definition"].values[0]
-if user_input.lower() in correct_def.lower():
+if user_input and user_input.lower() in correct_def.lower():
     if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
         term = st.session_state.vocab_list[st.session_state.current_term_index]
         with st.chat_message("assistant"):
