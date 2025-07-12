@@ -13,6 +13,7 @@ DB_PATH = 'student_progress.db'
 VOCAB_PATH = 'vocab.xlsx'
 
 # Initialize DB
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -34,6 +35,7 @@ def init_db():
                 )''')
     conn.commit()
     conn.close()
+
 init_db()
 
 # Helpers
@@ -42,7 +44,8 @@ def record_login(first, last, block):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.now().strftime('%B %d, %Y - %I:%M %p')
-    c.execute('INSERT OR IGNORE INTO students VALUES (?,?,?,?)', (first, last, block, now))
+    c.execute('INSERT OR IGNORE INTO students (first_name, last_name, block, last_login) VALUES (?,?,?,?)',
+              (first, last, block, now))
     c.execute('UPDATE students SET last_login=? WHERE first_name=? AND last_name=? AND block=?',
               (now, first, last, block))
     conn.commit()
@@ -56,16 +59,23 @@ def get_student_progress(first, last, block):
     conn.close()
     return df
 
-# Load vocab
+# Load vocabulary
 vocab = pd.read_excel(VOCAB_PATH, sheet_name=None)
 units = [f'Unit {i}' for i in range(1, 8)]
 
-# Initialize session state
-for key, default in {'user': None, 'role': None, 'unit': None, 'messages': [], 'current_index': 0}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
+# Session state defaults
+if 'user' not in st.session_state:
+    st.session_state.user = None
+if 'role' not in st.session_state:
+    st.session_state.role = None
+if 'unit' not in st.session_state:
+    st.session_state.unit = None
+if 'messages' not in st.session_state or st.session_state.unit is None:
+    st.session_state.messages = []
+if 'current_index' not in st.session_state:
+    st.session_state.current_index = 0
 
-# Views
+# --- Views ---
 
 def show_login():
     st.title("Dr. Fordham's History Lab")
@@ -78,11 +88,13 @@ def show_login():
             st.session_state.user = {'first': first, 'last': last, 'block': block}
             st.session_state.role = 'student'
             record_login(first, last, block)
+            st.experimental_rerun()
     else:
         pwd = st.text_input('Password', type='password')
         if st.button('Login as Teacher'):
             if pwd == 'letmein':
                 st.session_state.role = 'teacher'
+                st.experimental_rerun()
             else:
                 st.error('Incorrect password')
 
@@ -105,15 +117,18 @@ def student_main():
             st.session_state.unit = u
             st.session_state.messages = []
             st.session_state.current_index = 0
+            st.experimental_rerun()
     st.markdown('---')
     if st.button('Milestone Practice'):
         st.session_state.unit = 'Milestone'
         st.session_state.messages = []
         st.session_state.current_index = 0
+        st.experimental_rerun()
     if st.button('Special Project'):
         st.session_state.unit = 'Special'
         st.session_state.messages = []
         st.session_state.current_index = 0
+        st.experimental_rerun()
 
 
 def chat_session(unit):
@@ -136,10 +151,7 @@ def chat_session(unit):
     # Initialize first question
     if not st.session_state.messages:
         term0 = df_terms.iloc[0]['term']
-        st.session_state.messages.append({
-            'role': 'assistant',
-            'content': f"What do you think '{term0}' means?"
-        })
+        st.session_state.messages.append({'role': 'assistant', 'content': f"What do you think '{term0}' means?"})
 
     # Display header and progress
     st.header(unit)
@@ -149,7 +161,7 @@ def chat_session(unit):
     st.progress(pct_unit/100)
     st.caption(f'Progress for {unit}: {pct_unit}%')
 
-    # Render chat
+    # Render chat history
     for msg in st.session_state.messages:
         st.chat_message(msg['role']).write(msg['content'])
 
@@ -158,28 +170,86 @@ def chat_session(unit):
     if user_input:
         st.session_state.messages.append({'role': 'user', 'content': user_input})
         term = df_terms.iloc[st.session_state.current_index]['term']
-        system = {'role': 'system', 'content': 'You are a patient AI tutor. You may answer student questions with hints or clarifications, but never provide the full definition outright. Guide the student with follow-up questions toward understanding. Recognize partial correctness and, when the student clearly demonstrates mastery, respond exactly with "correct" to move on.'}
+        system = {'role': 'system', 'content': 'You are a patient AI tutor. You may answer questions with hints, never full definitions. Guide student with follow-ups. Respond "correct" on mastery.'}
         payload = [system] + st.session_state.messages
         comp = openai.chat.completions.create(model='gpt-4o-mini', messages=payload)
         reply = comp.choices[0].message.content
         st.session_state.messages.append({'role': 'assistant', 'content': reply})
 
-        # On mastery, record and queue next
+        # On mastery, record and prepare next
         if 'correct' in reply.lower() and unit in units:
             conn = sqlite3.connect(DB_PATH)
             c = conn.cursor()
-            c.execute('INSERT OR REPLACE INTO progress VALUES (?,?,?,?,?,1)',
+            c.execute('INSERT OR REPLACE INTO progress (first_name, last_name, block, unit, term, mastered) VALUES (?,?,?,?,?,1)',
                       (user['first'], user['last'], user['block'], unit, term))
             conn.commit()
             conn.close()
             st.session_state.current_index += 1
             if st.session_state.current_index < len(df_terms):
                 nxt = df_terms.iloc[st.session_state.current_index]['term']
-                st.session_state.messages.append({
-                    'role': 'assistant',
-                    'content': f"Great! What about '{nxt}'?"
-                })
+                st.session_state.messages.append({'role': 'assistant', 'content': f"Great! What about '{nxt}'?"})
             else:
                 st.session_state.messages.append({'role': 'assistant', 'content': f"Congratulations! You've completed {unit}!"})
-        # Force re-render so the assistant's reply appears immediately
         st.experimental_rerun()
+
+
+def teacher_main():
+    st.title('Teacher Dashboard')
+    st.sidebar.button('Logout', on_click=logout)
+
+    tabs = st.tabs(['First', 'Second', 'Fourth'])
+    conn = sqlite3.connect(DB_PATH)
+    studs = pd.read_sql_query('SELECT * FROM students', conn)
+    prog = pd.read_sql_query('SELECT * FROM progress', conn)
+    conn.close()
+
+    for i, b in enumerate(['First', 'Second', 'Fourth']):
+        with tabs[i]:
+            st.header(f'Block {b} Gradebook')
+            blk = studs[studs['block'] == b]
+            records = []
+            for _, r in blk.iterrows():
+                fn, ln = r['first_name'], r['last_name']
+                row = {'Last Name': ln, 'First Name': fn, 'Last Login': r['last_login']}
+                pr = prog[(prog['first_name'] == fn) & (prog['last_name'] == ln) & (prog['block'] == b)]
+                for u in units:
+                    row[u] = int(round(pr[pr['unit'] == u]['mastered'].sum() / len(vocab[u]) * 100)) if len(vocab[u]) else 0
+                total_terms = sum(len(vocab[u]) for u in units)
+                total_mastered = pr['mastered'].sum()
+                row['Overall'] = int(round(total_mastered / total_terms * 100)) if total_terms else 0
+                records.append(row)
+            if records:
+                df = pd.DataFrame(records).sort_values('Last Name')
+                edited = st.experimental_data_editor(df)
+                if st.button(f'Download {b} Data'):
+                    writer = pd.ExcelWriter(f'{b}_data.xlsx', engine='xlsxwriter')
+                    edited.to_excel(writer, index=False)
+                    writer.close()
+                    with open(f'{b}_data.xlsx', 'rb') as f:
+                        st.download_button('Download Excel', f, file_name=f'{b}_data.xlsx')
+            else:
+                st.info('No students in this block yet.')
+
+
+def logout():
+    for key in ['user', 'role', 'unit', 'messages', 'current_index']:
+        st.session_state[key] = None
+    st.experimental_rerun()
+
+
+def back_to_menu():
+    st.session_state.unit = None
+    st.session_state.messages = []
+    st.session_state.current_index = 0
+    st.experimental_rerun()
+
+# App control flow
+if st.session_state['role'] is None:
+    show_login()
+elif st.session_state['role'] == 'student':
+    if st.session_state['unit'] is None:
+        student_main()
+    else:
+        chat_session(st.session_state['unit'])
+elif st.session_state['role'] == 'teacher':
+    teacher_main()
