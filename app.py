@@ -80,12 +80,13 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
     unit = st.session_state.unit_selected
     st.markdown(f"### ✏️ {unit} Vocabulary")
     if unit == "Unit 1":
+        
 
-if unit_selected == "Unit 1":
-    st.markdown("### ✏️ Unit 1 Vocabulary")
+        if unit_selected == "Unit 1":
+            st.markdown("### ✏️ Unit 1 Vocabulary")
 
-    # Load vocab for Unit 1
-    vocab_df = pd.read_csv("vocab.csv")
+            # Load vocab for Unit 1
+            vocab_df = pd.read_csv("vocab.csv")
     vocab_list = vocab_df["term"].tolist()
     if "current_term_index" not in st.session_state:
         st.session_state.current_term_index = 0
