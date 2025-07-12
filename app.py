@@ -61,7 +61,50 @@ if admin_pw == "letmein":
         st.rerun()
 
     st.sidebar.success("Access granted.")
+
+    st.sidebar.success("Access granted.")
     st.subheader("📊 Teacher Dashboard")
+    data = load_database()
+    if data.empty:
+        st.info("No student data yet.")
+    else:
+        vocab_total = len(load_vocab())
+        data["Last_Login_Formatted"] = pd.to_datetime(data["last_login"], errors="coerce").dt.strftime("%B %d, %Y at %I:%M %p")
+        summary = (
+            data[data["mastered"] == True]
+            .groupby(["student", "block"])
+            .agg(Mastered_Terms=("term", "count"), Last_Login=("Last_Login_Formatted", "max"))
+            .reset_index()
+        )
+        summary["Total Terms"] = vocab_total
+        summary["Grade (%)"] = (summary["Mastered_Terms"] / vocab_total * 100).round(1)
+        st.dataframe(summary)
+
+        # Tabs by Block
+        st.markdown("### 📘 Class Mastery by Block")
+        blocks = summary["block"].unique()
+        tab_labels = [f"{b} Block" for b in blocks]
+        tabs = st.tabs(tab_labels)
+        for i, blk in enumerate(blocks):
+            blk_data = summary[summary["block"] == blk].sort_values(by=lambda x: x["student"].split()[-1])
+            with tabs[i]:
+                st.dataframe(blk_data)
+
+        # Create downloadable Excel
+        output = pd.ExcelWriter("/mnt/data/class_data.xlsx", engine="xlsxwriter")
+        for blk in blocks:
+            blk_data = summary[summary["block"] == blk].sort_values(by=lambda x: x["student"].split()[-1])
+            blk_data.to_excel(output, sheet_name=f"{blk} Block", index=False)
+        output.close()
+
+        st.download_button(
+            label="📥 Download Class Mastery Sheets",
+            data=open("/mnt/data/class_data.xlsx", "rb").read(),
+            file_name="Class_Mastery_Data.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        st.sidebar.button("🚪 Logout", on_click=lambda: st.experimental_rerun())
+
     data = load_database()
     if data.empty:
         st.info("No student data yet.")
