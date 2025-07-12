@@ -1,5 +1,5 @@
 
-# --- app.py (fixed login rerun issue) ---
+# --- app.py (using vocab.csv) ---
 import streamlit as st
 import pandas as pd
 import datetime
@@ -25,7 +25,7 @@ st.markdown("""
 st.title("📘 U.S. History Vocab Mastery Tool")
 
 # --- Helper functions ---
-def load_vocab(unit_csv='vocabulary.csv'):
+def load_vocab(unit_csv='vocab.csv'):
     return pd.read_csv(unit_csv)
 
 def record_login(name, block):
