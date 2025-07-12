@@ -36,17 +36,20 @@ if st.session_state.index < len(vocab):
 
         if st.button("Submit"):
             with st.spinner("Evaluating your response..."):
+                user_message = (
+                    f"The student was asked to define '{term}'.\n\n"
+                    f"Student answer: '{answer}'\n\n"
+                    f"Correct definition: '{correct_definition}'\n\n"
+                    "Evaluate their answer. Is it correct, close, or incorrect? "
+                    "Give brief feedback. If it’s close, ask a follow-up question to deepen their understanding. "
+                    "If it's fully correct, say so and tell them they can move on."
+                )
+
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
                         {"role": "system", "content": "You're a U.S. History teacher evaluating student vocabulary answers."},
-                        {"role": "user", "content": f"The student was asked to define '{term}'.
-
-Student answer: '{answer}'
-
-Correct definition: '{correct_definition}'
-
-Evaluate their answer. Is it correct, close, or incorrect? Give brief feedback. If it’s close, ask a follow-up question to deepen their understanding. If it's fully correct, say so and tell them they can move on."}
+                        {"role": "user", "content": user_message}
                     ],
                     max_tokens=200,
                     temperature=0.7
@@ -69,17 +72,19 @@ Evaluate their answer. Is it correct, close, or incorrect? Give brief feedback. 
 
         if st.button("Try Again"):
             with st.spinner("Re-evaluating your follow-up..."):
+                retry_message = (
+                    f"The student was asked to define '{term}'.\n\n"
+                    f"Their revised answer is: '{retry_input}'\n\n"
+                    f"Correct definition: '{correct_definition}'\n\n"
+                    "Evaluate their revised answer. If correct, tell them they got it and can move on. "
+                    "If still not fully correct, explain clearly and ask one final clarifying question."
+                )
+
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
                         {"role": "system", "content": "You're a U.S. History teacher evaluating student vocabulary answers."},
-                        {"role": "user", "content": f"The student was asked to define '{term}'.
-
-Their revised answer is: '{retry_input}'
-
-Correct definition: '{correct_definition}'
-
-Evaluate their revised answer. If correct, tell them they got it and can move on. If still not fully correct, explain clearly and ask one final clarifying question."}
+                        {"role": "user", "content": retry_message}
                     ],
                     max_tokens=200,
                     temperature=0.7
