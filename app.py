@@ -8,7 +8,6 @@ import openai
 
 # --- Configuration ---
 st.set_page_config(page_title="Dr. Fordham's History Lab", layout='wide')
-# Load API key from environment or Streamlit secrets
 openai.api_key = os.getenv("OPENAI_API_KEY", st.secrets.get("OPENAI_API_KEY", ""))
 DB_PATH = 'student_progress.db'
 VOCAB_PATH = 'vocab.xlsx'
@@ -144,11 +143,9 @@ def chat_session(unit):
         st.session_state.messages = []
         st.session_state.current_index = 0
 
-    # Display chat history
     for msg in st.session_state.messages:
         st.chat_message(msg['role']).write(msg['content'])
 
-    # User input
     user_input = st.chat_input('Your response...')
     if user_input:
         st.session_state.messages.append({'role':'user','content':user_input})
@@ -157,13 +154,24 @@ def chat_session(unit):
             f"Term: {term['term']}\nDefinition: {term['definition']}\nExample: {term['example']}\n"
             f"Student says: {user_input}\nEvaluate correctness, ask follow-up if needed."
         )
-        completion = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[{'role':'system','content':'You are a helpful tutor.'}]
-                      + [{'role':msg['role'], 'content': msg['content']} for msg in st.session_state.messages]
-        )
+        messages = [{'role':'system','content':'You are a helpful tutor.'}] + st.session_state.messages
+        completion = openai.ChatCompletion.create(model="gpt-4o-mini", messages=messages)
         reply = completion.choices[0].message.content
         st.session_state.messages.append({'role':'assistant','content':reply})
+
+        if 'correct' in reply.lower() and unit in units:
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute(
+                'INSERT OR REPLACE INTO progress (first_name,last_name,block,unit,term,mastered) VALUES (?,?,?,?,?,1)',
+                (user['first'], user['last'], user['block'], unit, term['term'])
+            )
+            conn.commit()
+            conn.close()
+            st.session_state.current_index += 1
+            if st.session_state.current_index >= len(term_list):
+                st.success(f'{unit} completed!')
+
         st.experimental_rerun()
 
 # --- Teacher View ---
@@ -184,7 +192,7 @@ def teacher_main():
             records = []
             for _,r in blk_students.iterrows():
                 fname, lname = r['first_name'], r['last_name']
-                row = {'Last Name':lname,'First Name':fname,'Last Login':r['last_login']}
+                row = {'Last Name': lname, 'First Name': fname, 'Last Login': r['last_login']}
                 pr = prog_df[(prog_df['first_name']==fname)&(prog_df['last_name']==lname)&(prog_df['block']==block)]
                 for unit in units:
                     pct = int(round(pr[pr['unit']==unit]['mastered'].sum()/len(vocab[unit])*100)) if len(vocab[unit])>0 else 0
@@ -193,14 +201,18 @@ def teacher_main():
                 total_mastered = pr['mastered'].sum()
                 row['Overall'] = int(round(total_mastered/total_terms*100)) if total_terms>0 else 0
                 records.append(row)
-            df = pd.DataFrame(records).sort_values('Last Name')
-            edited = st.experimental_data_editor(df, num_rows="dynamic")
-            if st.button(f'Download {block} Data'):
-                towrite = pd.ExcelWriter(f'block_{block}.xlsx', engine='xlsxwriter')
-                edited.to_excel(towrite, index=False, sheet_name=f'Block_{block}')
-                towrite.close()
-                with open(f'block_{block}.xlsx','rb') as f:
-                    st.download_button('Download Excel', f, file_name=f'block_{block}.xlsx')
+            if not records:
+                st.info('No students found in this block.')
+            else:
+                df = pd.DataFrame(records)
+                df = df.sort_values('Last Name')
+                edited = st.experimental_data_editor(df, num_rows='dynamic')
+                if st.button(f'Download {block} Data'):
+                    towrite = pd.ExcelWriter(f'block_{block}.xlsx', engine='xlsxwriter')
+                    edited.to_excel(towrite, index=False, sheet_name=f'Block_{block}')
+                    towrite.close()
+                    with open(f'block_{block}.xlsx','rb') as f:
+                        st.download_button('Download Excel', f, file_name=f'block_{block}.xlsx')
 
 # --- Navigation ---
 def logout():
@@ -229,4 +241,3 @@ elif st.session_state.role == 'student':
             back_to_menu()
 elif st.session_state.role == 'teacher':
     teacher_main()
-
