@@ -3,9 +3,11 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
+    term = st.session_state.vocab_list[st.session_state.current_term_index]
 st.markdown("""
-st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+    if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
+        term = st.session_state.vocab_list[st.session_state.current_term_index]
 st.markdown(msg)
 with st.chat_message(role):
     st.markdown(msg)
@@ -93,7 +95,8 @@ if "student_name" not in st.session_state:
                                                         # If terms remain
                                                         if st.session_state.current_term_index < len(vocab_list):
                                                             term = vocab_list[st.session_state.current_term_index]
-                                                            st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+                                                            if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
+                                                                term = st.session_state.vocab_list[st.session_state.current_term_index]
 
                                                             # Display previous chat
                                                             for role, msg in st.session_state.chat_history:
@@ -125,7 +128,8 @@ if "student_name" not in st.session_state:
             st.session_state.current_term_index = 0
             st.session_state.chat_history = []
             st.session_state.chat_history = []
-            st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+        if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
+            term = st.session_state.vocab_list[st.session_state.current_term_index]
 
         for role, msg in st.session_state.chat_history:
             with st.chat_message(role):
@@ -138,7 +142,8 @@ if "student_name" not in st.session_state:
                                                                                                             if term_index < len(vocab_list):
                                                                                                                 term = vocab_list[term_index]
                                                                                                                 correct_def = vocab_df[vocab_df['term'] == term]['definition'].values[0]
-                                                                                                                st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+                                                                                                                if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
+                                                                                                                    term = st.session_state.vocab_list[st.session_state.current_term_index]
                                                                                                                 for role, msg in st.session_state.chat_history:
                                                                                                                     with st.chat_message(role):
                                                                                                                         st.markdown(msg)
@@ -156,7 +161,8 @@ if "student_name" not in st.session_state:
                                                                                                                                         st.session_state.current_term_index = 0
                                                                                                                                         st.session_state.chat_history = []
 
-                                                                                                                                        st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+                                                                                                                                        if "current_term_index" in st.session_state and "vocab_list" in st.session_state:
+                                                                                                                                            term = st.session_state.vocab_list[st.session_state.current_term_index]
 
                                                                                                                                         with st.chat_message(role):
                                                                                                                                             st.markdown(msg)
