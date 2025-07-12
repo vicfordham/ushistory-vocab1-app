@@ -88,11 +88,8 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
     st.session_state.current_term_index = 0
     st.session_state.chat_history = []
 
-        if st.session_state.current_term_index < len(vocab_list):
-            term = vocab_list[st.session_state.current_term_index]
             st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
 
-            for role, msg in st.session_state.chat_history:
                 with st.chat_message(role):
                     st.markdown(msg)
 
@@ -100,18 +97,14 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
             if user_input:
                 with st.chat_message("user"):
                     st.markdown(user_input)
-                st.session_state.chat_history.append(("user", user_input))
 
                 correct_def = vocab_df[vocab_df["term"] == term]["definition"].values[0]
                 if user_input.lower() in correct_def.lower():
                     response = f"✅ That's correct! '{term}' means: {correct_def}"
-                    st.session_state.current_term_index += 1
-                    st.session_state.chat_history.append(("assistant", response))
                     with st.chat_message("assistant"):
                         st.markdown(response)
                 else:
                     response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
-                    st.session_state.chat_history.append(("assistant", response))
                     with st.chat_message("assistant"):
                         st.markdown(response)
         else:
@@ -126,11 +119,8 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
     st.session_state.current_term_index = 0
     st.session_state.chat_history = []
 
-        if st.session_state.current_term_index < len(vocab_list):
-        term = vocab_list[st.session_state.current_term_index]
         st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
 
-        for role, msg in st.session_state.chat_history:
             with st.chat_message(role):
                 st.markdown(msg)
 
@@ -138,19 +128,15 @@ if "unit_selected" in st.session_state and st.session_state.unit_selected:
         if user_input:
             with st.chat_message("user"):
                 st.markdown(user_input)
-            st.session_state.chat_history.append(("user", user_input))
 
             # AI Evaluation (simple rule-based for now)
             correct_def = vocab_df[vocab_df["term"] == term]["definition"].values[0]
             if user_input.lower() in correct_def.lower():
                 response = f"✅ That's correct! '{term}' means: {correct_def}"
-                st.session_state.current_term_index += 1
-                st.session_state.chat_history.append(("assistant", response))
                 with st.chat_message("assistant"):
                     st.markdown(response)
             else:
                 response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
-                st.session_state.chat_history.append(("assistant", response))
                 with st.chat_message("assistant"):
                     st.markdown(response)
         else:
