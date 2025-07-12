@@ -58,6 +58,7 @@ if "page" not in st.session_state:
 
 # Login logic
 def login_page():
+    pass  # placeholder to fix indentation
 st.markdown("<div class=\"main-title\">Welcome to Dr. Fordham's U.S. History Lab</div>", unsafe_allow_html=True)
     st.subheader("Student Login")
     first = st.text_input("First Name")
