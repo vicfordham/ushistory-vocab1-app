@@ -55,7 +55,11 @@ st.markdown("Welcome to your personal mastery-based vocabulary coach. Let's buil
 # Sidebar for teacher login
 st.sidebar.title("👨‍🏫 Teacher Login")
 admin_pw = st.sidebar.text_input("Enter teacher password", type="password")
+
 if admin_pw == "letmein":
+    if st.sidebar.button("🚪 Logout"):
+        st.rerun()
+
     st.sidebar.success("Access granted.")
     st.subheader("📊 Teacher Dashboard")
     data = load_database()
