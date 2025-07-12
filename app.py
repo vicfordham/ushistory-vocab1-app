@@ -168,7 +168,7 @@ def teacher_main():
     st.sidebar.button('Logout',on_click=logout)
     tabs=st.tabs(['First','Second','Fourth'])
     conn=sqlite3.connect(DB_PATH)
-    studs=pd.read_sql('students',conn)
+    prog = pd.read_sql_query('SELECT * FROM progress', conn)
     prog=pd.read_sql('progress',conn)
     conn.close()
     for i,b in enumerate(['First','Second','Fourth']):
