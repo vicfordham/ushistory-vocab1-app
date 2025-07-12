@@ -139,7 +139,7 @@ def chat_page():
             st.success(f"✅ That's right! '{term['term']}' means: {correct_def}")
         else:
             st.warning(f"🤔 Not quite. '{term['term']}' actually means: {correct_def}")
-            st.info(f"{playful_reminder()}
+            st.info(f"{playful_reminder()}")
 Try this: How do you think '{term['term']}' affected history?")
 
         st.session_state.current_term_index += 1
