@@ -68,4 +68,42 @@ if st.button("🎯 Final Quiz (50 Random Words)"):
 # Simulate Unit 1 session
 if unit_selected == "Unit 1":
     st.markdown("### ✏️ Unit 1 Vocabulary")
-    st.info("Interactive vocabulary session for Unit 1 will go here.")
+
+    # Load vocab for Unit 1
+    vocab_df = pd.read_csv("vocab.csv")
+    vocab_list = vocab_df["term"].tolist()
+    if "current_term_index" not in st.session_state:
+        st.session_state.current_term_index = 0
+        st.session_state.chat_history = []
+
+    if st.session_state.current_term_index < len(vocab_list):
+        term = vocab_list[st.session_state.current_term_index]
+        st.markdown(f"**🗣 Let's talk about the word: `{term}`**")
+
+        for role, msg in st.session_state.chat_history:
+            with st.chat_message(role):
+                st.markdown(msg)
+
+        user_input = st.chat_input("What do you think it means?")
+        if user_input:
+            with st.chat_message("user"):
+                st.markdown(user_input)
+            st.session_state.chat_history.append(("user", user_input))
+
+            # AI Evaluation (simple rule-based for now)
+            correct_def = vocab_df[vocab_df["term"] == term]["definition"].values[0]
+            if user_input.lower() in correct_def.lower():
+                response = f"✅ That's correct! '{term}' means: {correct_def}"
+                st.session_state.current_term_index += 1
+                st.session_state.chat_history.append(("assistant", response))
+                with st.chat_message("assistant"):
+                    st.markdown(response)
+            else:
+                response = f"🤔 Not quite. '{term}' actually means: {correct_def}. Let's talk more—can you explain how this applies to history?"
+                st.session_state.chat_history.append(("assistant", response))
+                with st.chat_message("assistant"):
+                    st.markdown(response)
+    else:
+        st.balloons()
+        st.success("🎉 You've finished all Unit 1 vocabulary!")
+
