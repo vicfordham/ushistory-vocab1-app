@@ -66,17 +66,14 @@ if st.session_state.index < len(vocab):
     definition = row["definition"]
     example = row["example_usage"]
 
-    # Start new term if chat empty
     if not st.session_state.messages:
         system_msg = f"Let's talk about the word **{term}**. What do you think it means?"
         st.session_state.messages.append({"role": "assistant", "content": system_msg})
 
-    # Display chat history using chat UI
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Chat input at bottom
     prompt = st.chat_input("Type your answer...")
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -84,7 +81,6 @@ if st.session_state.index < len(vocab):
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Compose mastery-focused prompt
         messages = [{"role": "system", "content": (
             f"You are a warm, encouraging U.S. History tutor. You're currently helping a student understand the vocabulary term: '{term}'.\n"
             f"The correct definition is: '{definition}'.\n"
@@ -112,15 +108,15 @@ if st.session_state.index < len(vocab):
         with st.chat_message("assistant"):
             st.markdown(reply)
 
-        # Advance if mastery affirmed
         if "you got it" in reply.lower() or "let’s move on" in reply.lower():
             mastery_data = load_database()
-            mastery_data = mastery_data.append({
+            new_row = pd.DataFrame([{
                 "student": name,
                 "term": term,
                 "mastered": True,
                 "timestamp": datetime.now().isoformat()
-            }, ignore_index=True)
+            }])
+            mastery_data = pd.concat([mastery_data, new_row], ignore_index=True)
             save_database(mastery_data)
             st.session_state.index += 1
             st.session_state.messages = []
