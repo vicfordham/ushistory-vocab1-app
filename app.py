@@ -1,196 +1,248 @@
 import streamlit as st
 import pandas as pd
-import random
-import datetime
+import sqlite3
 import os
+import random
+from datetime import datetime
 import openai
-from collections import defaultdict
+from streamlit_chat import message
 
-# Set OpenAI API key from Streamlit secrets
-openai.api_key = st.secrets["openai_api_key"]
+# --- Configuration ---
+st.set_page_config(page_title="Dr. Fordham's History Lab", layout='wide')
+# Load API key from environment or Streamlit secrets
+openai.api_key = os.getenv("OPENAI_API_KEY", st.secrets.get("OPENAI_API_KEY", ""))
+DB_PATH = 'student_progress.db'
+VOCAB_PATH = 'vocab.xlsx'
 
-# Load Vocabulary Data
-def load_vocab():
-    excel_file = 'vocab.xlsx'
-    return {f"Unit {i}": pd.read_excel(excel_file, sheet_name=f"Unit {i}") for i in range(1, 8)}
+# --- Database Setup ---
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # Students table
+    c.execute('''CREATE TABLE IF NOT EXISTS students (
+                    first_name TEXT,
+                    last_name TEXT,
+                    block TEXT,
+                    last_login TEXT,
+                    PRIMARY KEY (first_name, last_name, block)
+                )''')
+    # Progress table
+    c.execute('''CREATE TABLE IF NOT EXISTS progress (
+                    first_name TEXT,
+                    last_name TEXT,
+                    block TEXT,
+                    unit TEXT,
+                    term TEXT,
+                    mastered INTEGER,
+                    PRIMARY KEY (first_name, last_name, block, unit, term)
+                )''')
+    conn.commit()
+    conn.close()
 
-vocab_data = load_vocab()
+init_db()
 
-# Initialize session state
-def init_session():
-    if 'user' not in st.session_state:
-        st.session_state.user = None
-        st.session_state.block = None
-        st.session_state.page = "Home"
-        st.session_state.chat_progress = defaultdict(lambda: 0)
-        st.session_state.unit_chats = defaultdict(list)
-        st.session_state.unit_mastery = defaultdict(lambda: defaultdict(bool))
-        st.session_state.teacher_logged_in = False
-        st.session_state.student_data = {}
+# --- Helper Functions ---
+def record_login(first, last, block):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    now = datetime.now().strftime('%B %d, %Y - %I:%M %p')
+    c.execute('INSERT OR IGNORE INTO students (first_name, last_name, block, last_login) VALUES (?, ?, ?, ?)',
+              (first, last, block, now))
+    c.execute('UPDATE students SET last_login = ? WHERE first_name = ? AND last_name = ? AND block = ?',
+              (now, first, last, block))
+    conn.commit()
+    conn.close()
 
-init_session()
+def get_student_progress(first, last, block):
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query(
+        'SELECT unit, term, mastered FROM progress WHERE first_name=? AND last_name=? AND block=?',
+        conn, params=(first, last, block))
+    conn.close()
+    return df
 
-# Simulate persistent storage
-if 'db' not in st.session_state:
-    st.session_state.db = {"First": {}, "Second": {}, "Fourth": {}}
+# Load vocabulary
+vocab = pd.read_excel(VOCAB_PATH, sheet_name=None)
+units = [f'Unit {i}' for i in range(1, 8)]
 
-# Helper Functions
-def save_progress():
-    student_key = f"{st.session_state.user['first']} {st.session_state.user['last']}"
-    st.session_state.db[st.session_state.block][student_key] = {
-        "progress": dict(st.session_state.chat_progress),
-        "unit_mastery": dict(st.session_state.unit_mastery),
-        "last_login": datetime.datetime.now().strftime("%B %d, %Y - %I:%M %p")
-    }
-
-def get_student_key():
-    return f"{st.session_state.user['first']} {st.session_state.user['last']}"
-
-def logout():
+# --- Session State ---
+if 'user' not in st.session_state:
     st.session_state.user = None
-    st.session_state.block = None
-    st.session_state.page = "Home"
-    st.session_state.teacher_logged_in = False
+if 'role' not in st.session_state:
+    st.session_state.role = None
 
-# Pages
-
-def home_page():
+# --- Authentication ---
+def show_login():
     st.title("Dr. Fordham's History Lab")
-    st.subheader("Student Login")
-    first = st.text_input("First Name")
-    last = st.text_input("Last Name")
-    block = st.selectbox("Block", ["First", "Second", "Fourth"])
-    
-    if st.button("Student Login"):
-        if first and last:
-            st.session_state.user = {"first": first, "last": last}
-            st.session_state.block = block
-            st.session_state.page = "Main Menu"
-            save_progress()
+    role = st.radio("Login as", ['Student', 'Teacher'], horizontal=True)
+    if role == 'Student':
+        first = st.text_input('First Name')
+        last = st.text_input('Last Name')
+        block = st.selectbox('Block', ['First', 'Second', 'Fourth'])
+        if st.button('Login as Student'):
+            if first and last:
+                st.session_state.user = {'first': first, 'last': last, 'block': block}
+                st.session_state.role = 'student'
+                record_login(first, last, block)
+                st.experimental_rerun()
+    else:
+        pwd = st.text_input('Password', type='password')
+        if st.button('Login as Teacher'):
+            if pwd == 'letmein':
+                st.session_state.role = 'teacher'
+                st.experimental_rerun()
+            else:
+                st.error('Incorrect password')
 
-    st.subheader("Teacher Login")
-    teacher_password = st.text_input("Password", type="password")
-    if st.button("Teacher Login") and teacher_password == "letmein":
-        st.session_state.teacher_logged_in = True
-        st.session_state.page = "Teacher Platform"
+# --- Student View ---
+def student_main():
+    user = st.session_state.user
+    st.sidebar.button('Logout', on_click=logout)
+    st.title(f"Welcome, {user['first']} {user['last']} (Block {user['block']})")
+    # Overall progress
+    prog_df = get_student_progress(user['first'], user['last'], user['block'])
+    total = sum(vocab[unit].shape[0] for unit in units)
+    mastered = prog_df['mastered'].sum()
+    overall_pct = int(round((mastered/total)*100)) if total>0 else 0
+    st.progress(overall_pct / 100)
+    st.caption(f'Overall Progress: {overall_pct}%')
 
+    cols = st.columns(4)
+    for idx, unit in enumerate(units):
+        if cols[idx%4].button(unit):
+            st.session_state.unit = unit
+            st.experimental_rerun()
 
-def main_menu():
-    st.title(f"Welcome, {st.session_state.user['first']} {st.session_state.user['last']}")
-    st.write(f"Block: {st.session_state.block}")
-    st.progress(sum(st.session_state.chat_progress.values()) / (7 * 100))
-    if st.button("Logout"):
-        logout()
-        return
+    st.markdown('---')
+    if st.button('Milestone Practice'):
+        st.session_state.unit = 'Milestone'
+        st.experimental_rerun()
+    if st.button('Special Project'):
+        st.session_state.unit = 'Special'
+        st.experimental_rerun()
 
-    for i in range(1, 8):
-        if st.button(f"Unit {i} Vocabulary Practice"):
-            st.session_state.page = f"Unit {i}"
-            return
+# --- Chat Sessions ---
+def chat_session(unit):
+    user = st.session_state.user
+    st.sidebar.button('Back to Menu', on_click=back_to_menu)
 
-    if st.button("Milestone Practice"):
-        st.session_state.page = "Milestone"
-        return
+    if unit in units:
+        df = vocab[unit]
+    elif unit == 'Milestone':
+        samples = []
+        for u in units:
+            dfu = vocab[u]
+            samples += dfu.sample(2).to_dict('records')
+        df = pd.DataFrame(samples)
 
-    if st.button("Special Project"):
-        st.session_state.page = "Special Project"
-        return
+    st.header(unit)
+    prog_df = get_student_progress(user['first'], user['last'], user['block'])
+    term_list = df['term'].tolist()
+    mastered_terms = prog_df[prog_df['unit']==unit]['term'].tolist() if unit in units else []
+    pct = int(round(len(mastered_terms)/len(term_list)*100)) if term_list else 0
+    st.progress(pct/100)
+    st.caption(f'Progress for {unit}: {pct}%')
 
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+        st.session_state.current_index = 0
 
-def unit_chat(unit):
-    st.title(f"{unit} Vocabulary Practice")
-    words = vocab_data[unit].to_dict("records")
-    mastered = st.session_state.unit_mastery[unit]
+    for msg in st.session_state.messages:
+        message(msg['content'], is_user=(msg['role']=='user'))
 
-    if st.button("Back to Main Menu"):
-        st.session_state.page = "Main Menu"
-        return
+    user_input = st.text_input('You:', key='input')
+    if st.button('Send', key='send') and user_input:
+        st.session_state.messages.append({'role':'user','content':user_input})
+        term = df.iloc[st.session_state.current_index]
+        prompt = (
+            f"Term: {term['term']}\nDefinition: {term['definition']}\nExample: {term['example']}\n"
+            f"Student says: {user_input}\nEvaluate correctness, ask follow-up if needed."
+        )
+        completion = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[{'role':'system','content':'You are a helpful tutor.'}]
+                      + st.session_state.messages
+        )
+        reply = completion.choices[0].message.content
+        st.session_state.messages.append({'role':'assistant','content':reply})
 
-    for word in words:
-        if not mastered[word['term']]:
-            st.write(f"Define: **{word['term']}**")
-            response = st.text_input("Your Response")
-            if st.button("Submit"):
-                prompt = f"Student's response: '{response}'\nWord: {word['term']}\nDefinition: {word['definition']}\nExample: {word['example']}\nDetermine if the student shows understanding. If partially right, ask a follow-up question to guide them. Otherwise, confirm mastery."
-                ai = openai.ChatCompletion.create(model="gpt-4", messages=[{"role": "user", "content": prompt}])
-                reply = ai.choices[0].message.content
-                st.session_state.unit_chats[unit].append((response, reply))
-                st.write(reply)
-                if "Correct!" in reply or "Yes," in reply:
-                    mastered[word['term']] = True
-                    st.session_state.chat_progress[unit] = round((sum(mastered.values()) / len(words)) * 100)
-                    save_progress()
-            break
+        if 'correct' in reply.lower():
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute(
+                'INSERT OR REPLACE INTO progress (first_name,last_name,block,unit,term,mastered) VALUES (?,?,?,?,?,1)',
+                (user['first'], user['last'], user['block'], unit, term['term'])
+            )
+            conn.commit()
+            conn.close()
+            st.session_state.current_index += 1
+            if st.session_state.current_index >= len(term_list):
+                st.success(f'{unit} completed!')
 
+        st.experimental_rerun()
 
-def milestone_chat():
-    st.title("Milestone Practice")
-    words = []
-    for unit_df in vocab_data.values():
-        words.extend(unit_df.sample(2).to_dict("records"))
+# --- Teacher View ---
+def teacher_main():
+    st.title('Teacher Dashboard')
+    st.sidebar.button('Logout', on_click=logout)
 
-    for word in words:
-        st.write(f"Define: **{word['term']}**")
-        response = st.text_input("Your Response", key=word['term'])
-        if st.button(f"Submit {word['term']}"):
-            prompt = f"Student's response: '{response}'\nWord: {word['term']}\nDefinition: {word['definition']}\nExample: {word['example']}\nRespond appropriately."
-            ai = openai.ChatCompletion.create(model="gpt-4", messages=[{"role": "user", "content": prompt}])
-            reply = ai.choices[0].message.content
-            st.write(reply)
+    tabs = st.tabs(['First','Second','Fourth'])
+    conn = sqlite3.connect(DB_PATH)
+    students_df = pd.read_sql_query('SELECT * FROM students', conn)
+    prog_df = pd.read_sql_query('SELECT * FROM progress', conn)
+    conn.close()
 
-    if st.button("Back to Main Menu"):
-        st.session_state.page = "Main Menu"
+    for idx, block in enumerate(['First','Second','Fourth']):
+        with tabs[idx]:
+            st.header(f'Block {block} Gradebook')
+            blk_students = students_df[students_df['block']==block]
+            records = []
+            for _,r in blk_students.iterrows():
+                fname, lname = r['first_name'], r['last_name']
+                row = {'Last Name':lname,'First Name':fname,'Last Login':r['last_login']}
+                pr = prog_df[(prog_df['first_name']==fname)&(prog_df['last_name']==lname)&(prog_df['block']==block)]
+                for unit in units:
+                    pct = int(round(pr[pr['unit']==unit]['mastered'].sum()/len(vocab[unit])*100)) if len(vocab[unit])>0 else 0
+                    row[unit] = pct
+                total_terms = sum(len(vocab[unit]) for unit in units)
+                total_mastered = pr['mastered'].sum()
+                row['Overall'] = int(round(total_mastered/total_terms*100)) if total_terms>0 else 0
+                records.append(row)
+            df = pd.DataFrame(records).sort_values('Last Name')
+            edited = st.experimental_data_editor(df, num_rows="dynamic")
+            if st.button(f'Download {block} Data'):
+                towrite = pd.ExcelWriter(f'block_{block}.xlsx', engine='xlsxwriter')
+                edited.to_excel(towrite, index=False, sheet_name=f'Block_{block}')
+                towrite.close()
+                with open(f'block_{block}.xlsx','rb') as f:
+                    st.download_button('Download Excel', f, file_name=f'block_{block}.xlsx')
 
+# --- Navigation ---
+def logout():
+    for k in list(st.session_state.keys()):
+        del st.session_state[k]
+    st.experimental_rerun()
 
-def special_project():
-    st.title("Special Project - Chat with Benjamin Collins")
-    if 'ben_history' not in st.session_state:
-        st.session_state.ben_history = []
-    st.write("You're now chatting with Ben Collins, a farmer from 1760s Savannah.")
-    chat_input = st.text_input("You:")
-    if st.button("Send"):
-        history = "\n".join(st.session_state.ben_history[-5:])
-        prompt = f"You are Benjamin Collins, a 1760s Methodist farmer near Savannah, GA. You are kind, curious, religious, and anti-slavery but don't say so. Chat historically and make up appropriate details about life.\n{history}\nYou: {chat_input}"
-        ai = openai.ChatCompletion.create(model="gpt-4", messages=[{"role": "user", "content": prompt}])
-        reply = ai.choices[0].message.content
-        st.session_state.ben_history.append(f"Student: {chat_input}\nBen: {reply}")
-        st.write(reply)
-    if st.button("Back to Main Menu"):
-        st.session_state.page = "Main Menu"
+def back_to_menu():
+    st.session_state.pop('unit', None)
+    st.session_state.pop('messages', None)
+    st.session_state.pop('current_index', None)
+    st.experimental_rerun()
 
-
-def teacher_platform():
-    st.title("Teacher Platform")
-    if st.button("Logout"):
-        logout()
-        return
-
-    st.download_button("Download All Student Data", pd.DataFrame([{
-        "Block": blk,
-        "Student": name,
-        **data["progress"],
-        "Last Login": data["last_login"]
-    } for blk, students in st.session_state.db.items() for name, data in students.items()]).to_csv(index=False), "all_student_data.csv")
-
-    block = st.selectbox("Select Block", ["First", "Second", "Fourth"])
-    students = st.session_state.db[block]
-    for name in sorted(students):
-        data = students[name]
-        st.write(f"**{name}** - Last Login: {data['last_login']}")
-        for unit, prog in data["progress"].items():
-            new_val = st.slider(f"{unit} Progress", 0, 100, prog)
-            students[name]['progress'][unit] = new_val
-
-# Routing
-if st.session_state.page == "Home":
-    home_page()
-elif st.session_state.page == "Main Menu":
-    main_menu()
-elif st.session_state.page == "Milestone":
-    milestone_chat()
-elif st.session_state.page == "Special Project":
-    special_project()
-elif st.session_state.page.startswith("Unit"):
-    unit_chat(st.session_state.page)
-elif st.session_state.page == "Teacher Platform":
-    teacher_platform()
+# --- App Control Flow ---
+if st.session_state.role is None:
+    show_login()
+elif st.session_state.role == 'student':
+    if 'unit' not in st.session_state:
+        student_main()
+    else:
+        if st.session_state.unit in units or st.session_state.unit == 'Milestone':
+            chat_session(st.session_state.unit)
+        else:
+            # Special project
+            st.header('Special Project: Chat with Ben')
+            st.info('Benjamin Collins simulation coming soon.')
+            if st.button('Back to Menu'):
+                back_to_menu()
+elif st.session_state.role == 'teacher':
+    teacher_main()
