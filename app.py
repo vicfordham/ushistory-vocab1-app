@@ -173,7 +173,6 @@ def chat_session():
             if st.session_state.current_index < len(terms_df):
                 next_term = terms_df.iloc[st.session_state.current_index]['term']
                 st.session_state.messages.append({'role': 'assistant', 'content': f"Great! What about '{next_term}'?"})
-        return
 
 def teacher_main():
     st.title('Teacher Dashboard')
