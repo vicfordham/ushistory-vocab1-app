@@ -165,7 +165,7 @@ def chat_session(unit):
     for msg in st.session_state.messages:
         st.chat_message(msg['role']).write(msg['content'])
 
-    # Accept and process input
+        # Accept and process input
     user_input = st.chat_input('Your response...')
     if user_input:
         st.session_state.messages.append({'role': 'user', 'content': user_input})
@@ -190,66 +190,4 @@ def chat_session(unit):
                 st.session_state.messages.append({'role': 'assistant', 'content': f"Great! What about '{nxt}'?"})
             else:
                 st.session_state.messages.append({'role': 'assistant', 'content': f"Congratulations! You've completed {unit}!"})
-        st.experimental_rerun()
-
-
-def teacher_main():
-    st.title('Teacher Dashboard')
-    st.sidebar.button('Logout', on_click=logout)
-
-    tabs = st.tabs(['First', 'Second', 'Fourth'])
-    conn = sqlite3.connect(DB_PATH)
-    studs = pd.read_sql_query('SELECT * FROM students', conn)
-    prog = pd.read_sql_query('SELECT * FROM progress', conn)
-    conn.close()
-
-    for i, b in enumerate(['First', 'Second', 'Fourth']):
-        with tabs[i]:
-            st.header(f'Block {b} Gradebook')
-            blk = studs[studs['block'] == b]
-            records = []
-            for _, r in blk.iterrows():
-                fn, ln = r['first_name'], r['last_name']
-                row = {'Last Name': ln, 'First Name': fn, 'Last Login': r['last_login']}
-                pr = prog[(prog['first_name'] == fn) & (prog['last_name'] == ln) & (prog['block'] == b)]
-                for u in units:
-                    row[u] = int(round(pr[pr['unit'] == u]['mastered'].sum() / len(vocab[u]) * 100)) if len(vocab[u]) else 0
-                total_terms = sum(len(vocab[u]) for u in units)
-                total_mastered = pr['mastered'].sum()
-                row['Overall'] = int(round(total_mastered / total_terms * 100)) if total_terms else 0
-                records.append(row)
-            if records:
-                df = pd.DataFrame(records).sort_values('Last Name')
-                edited = st.experimental_data_editor(df)
-                if st.button(f'Download {b} Data'):
-                    writer = pd.ExcelWriter(f'{b}_data.xlsx', engine='xlsxwriter')
-                    edited.to_excel(writer, index=False)
-                    writer.close()
-                    with open(f'{b}_data.xlsx', 'rb') as f:
-                        st.download_button('Download Excel', f, file_name=f'{b}_data.xlsx')
-            else:
-                st.info('No students in this block yet.')
-
-
-def logout():
-    for key in ['user', 'role', 'unit', 'messages', 'current_index']:
-        st.session_state[key] = None
-    st.experimental_rerun()
-
-
-def back_to_menu():
-    st.session_state.unit = None
-    st.session_state.messages = []
-    st.session_state.current_index = 0
-    st.experimental_rerun()
-
-# App control flow
-if st.session_state['role'] is None:
-    show_login()
-elif st.session_state['role'] == 'student':
-    if st.session_state['unit'] is None:
-        student_main()
-    else:
-        chat_session(st.session_state['unit'])
-elif st.session_state['role'] == 'teacher':
-    teacher_main()
+        return
