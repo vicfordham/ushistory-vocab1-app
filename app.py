@@ -88,7 +88,7 @@ def show_login():
             st.session_state.user = {'first': first, 'last': last, 'block': block}
             st.session_state.role = 'student'
             record_login(first, last, block)
-            st.experimental_rerun()
+            
     else:
         pwd = st.text_input('Password', type='password')
         if st.button('Login as Teacher'):
