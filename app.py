@@ -6,13 +6,13 @@ import random
 from datetime import datetime
 import openai
 
-# --- Configuration ---
+# Configuration
 st.set_page_config(page_title="Dr. Fordham's History Lab", layout='wide')
 openai.api_key = os.getenv("OPENAI_API_KEY", st.secrets.get("OPENAI_API_KEY", ""))
 DB_PATH = 'student_progress.db'
 VOCAB_PATH = 'vocab.xlsx'
 
-# --- Database Initialization ---
+# Initialize database
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -36,16 +36,13 @@ def init_db():
     conn.close()
 init_db()
 
-# --- Helper Functions ---
-
+# Helpers
 def record_login(first, last, block):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.now().strftime('%B %d, %Y - %I:%M %p')
-    c.execute('INSERT OR IGNORE INTO students VALUES (?,?,?,?)',
-              (first, last, block, now))
-    c.execute('UPDATE students SET last_login=? WHERE first_name=? AND last_name=? AND block=?',
-              (now, first, last, block))
+    c.execute('INSERT OR IGNORE INTO students VALUES (?,?,?,?)', (first, last, block, now))
+    c.execute('UPDATE students SET last_login=? WHERE first_name=? AND last_name=? AND block=?', (now, first, last, block))
     conn.commit()
     conn.close()
 
@@ -57,23 +54,16 @@ def get_student_progress(first, last, block):
     conn.close()
     return df
 
-# Load vocabulary
+# Load vocabulary and define units
 vocab = pd.read_excel(VOCAB_PATH, sheet_name=None)
 units = list(vocab.keys())
 
-# --- Session State Defaults ---
-if 'user' not in st.session_state:
-    st.session_state.user = None
-if 'role' not in st.session_state:
-    st.session_state.role = None
-if 'unit' not in st.session_state:
-    st.session_state.unit = None
-if 'messages' not in st.session_state:
-    st.session_state.messages = []
-if 'current_index' not in st.session_state:
-    st.session_state.current_index = 0
+# Initialize session state
+for key, default in {'user': None, 'role': None, 'unit': None, 'messages': [], 'current_index': 0}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-# --- Views ---
+# Views
 def show_login():
     st.title("Dr. Fordham's History Lab")
     role = st.radio("Login as", ['Student', 'Teacher'], horizontal=True)
@@ -85,16 +75,14 @@ def show_login():
             st.session_state.user = {'first': first, 'last': last, 'block': block}
             st.session_state.role = 'student'
             record_login(first, last, block)
-            st.experimental_rerun()
+            return
     else:
         pwd = st.text_input('Password', type='password')
-        if st.button('Login'):
-            if pwd == 'letmein':
-                st.session_state.role = 'teacher'
-                st.experimental_rerun()
-            else:
-                st.error('Incorrect password')
-
+        if st.button('Login') and pwd == 'letmein':
+            st.session_state.role = 'teacher'
+            return
+        elif st.button('Login'):
+            st.error('Incorrect password')
 
 def student_main():
     user = st.session_state.user
@@ -103,9 +91,9 @@ def student_main():
     progress = get_student_progress(user['first'], user['last'], user['block'])
     total_terms = sum(len(vocab[u]) for u in units)
     mastered = progress['mastered'].sum()
-    pct = int(round(mastered / total_terms * 100)) if total_terms else 0
-    st.progress(pct / 100)
-    st.caption(f'Overall Progress: {pct}%')
+    overall_pct = int(round(mastered / total_terms * 100)) if total_terms else 0
+    st.progress(overall_pct / 100)
+    st.caption(f'Overall Progress: {overall_pct}%')
 
     cols = st.columns(4)
     for i, u in enumerate(units):
@@ -113,63 +101,64 @@ def student_main():
             st.session_state.unit = u
             st.session_state.messages = []
             st.session_state.current_index = 0
-            st.experimental_rerun()
+            return
+
     st.markdown('---')
     if st.button('Milestone Practice'):
         st.session_state.unit = 'Milestone'
         st.session_state.messages = []
         st.session_state.current_index = 0
-        st.experimental_rerun()
+        return
     if st.button('Special Project'):
         st.session_state.unit = 'Special'
         st.session_state.messages = []
         st.session_state.current_index = 0
-        st.experimental_rerun()
+        return
 
-
-def chat_session(unit):
+def chat_session():
+    unit = st.session_state.unit
     user = st.session_state.user
     st.sidebar.button('Back to Menu', on_click=back_to_menu)
 
-    # Prepare terms
+    # Select terms
     if unit in units:
         terms_df = vocab[unit]
     elif unit == 'Milestone':
-        samples = []
+        recs = []
         for u in units:
-            samples += vocab[u].sample(2).to_dict('records')
-        terms_df = pd.DataFrame(samples)
+            recs += vocab[u].sample(2).to_dict('records')
+        terms_df = pd.DataFrame(recs)
     else:
         st.header('Special Project')
         st.info('Benjamin Collins simulation coming soon.')
         return
 
-    # Initialize chat
+    # Initialize first question
     if not st.session_state.messages:
         first_term = terms_df.iloc[0]['term']
         st.session_state.messages = [{'role': 'assistant', 'content': f"What do you think '{first_term}' means?"}]
         st.session_state.current_index = 0
 
-    # Header and progress
+    # Display header and progress
     st.header(unit)
     prog = get_student_progress(user['first'], user['last'], user['block'])
     learned = prog[prog['unit'] == unit]['mastered'].sum() if unit in units else 0
-    pct_u = int(round(learned / len(terms_df) * 100)) if len(terms_df) else 0
-    st.progress(pct_u / 100)
-    st.caption(f'Progress: {pct_u}%')
+    pct = int(round(learned / len(terms_df) * 100)) if len(terms_df) else 0
+    st.progress(pct / 100)
+    st.caption(f'Progress: {pct}%')
 
-    # Display messages
+    # Show conversation
     for msg in st.session_state.messages:
         st.chat_message(msg['role']).write(msg['content'])
 
-    # User input
-    user_input = st.chat_input('Your response...')
-    if user_input:
-        st.session_state.messages.append({'role': 'user', 'content': user_input})
+    # Get user input
+    user_response = st.chat_input('Your response...')
+    if user_response:
+        st.session_state.messages.append({'role': 'user', 'content': user_response})
         current_term = terms_df.iloc[st.session_state.current_index]['term']
-        system_msg = {'role': 'system', 'content': 'You are a patient tutor. Give hints, ask follow-ups, never full definitions. Reply "correct" when mastery achieved.'}
-        to_send = [system_msg] + st.session_state.messages
-        resp = openai.chat.completions.create(model='gpt-4o-mini', messages=to_send)
+        system_msg = {'role': 'system', 'content': 'You are a patient tutor. Provide hints, never full definitions. Guide with follow-ups. Reply "correct" on mastery.'}
+        conversation = [system_msg] + st.session_state.messages
+        resp = openai.chat.completions.create(model='gpt-4o-mini', messages=conversation)
         reply = resp.choices[0].message.content
         st.session_state.messages.append({'role': 'assistant', 'content': reply})
 
@@ -183,9 +172,8 @@ def chat_session(unit):
             st.session_state.current_index += 1
             if st.session_state.current_index < len(terms_df):
                 next_term = terms_df.iloc[st.session_state.current_index]['term']
-                st.session_state.messages.append({'role': 'assistant', 'content': f"Great! Now, what about '{next_term}'?"})
-        st.experimental_rerun()
-
+                st.session_state.messages.append({'role': 'assistant', 'content': f"Great! What about '{next_term}'?"})
+        return
 
 def teacher_main():
     st.title('Teacher Dashboard')
@@ -207,8 +195,7 @@ def teacher_main():
                 row = {'Last Name': ln, 'First Name': fn, 'Last Login': r['last_login']}
                 pr = prog[(prog['first_name'] == fn) & (prog['last_name'] == ln) & (prog['block'] == b)]
                 for u in units:
-                    pct = int(round(pr[pr['unit'] == u]['mastered'].sum() / len(vocab[u]) * 100)) if len(vocab[u]) else 0
-                    row[u] = pct
+                    row[u] = int(round(pr[pr['unit'] == u]['mastered'].sum() / len(vocab[u]) * 100)) if len(vocab[u]) else 0
                 total = sum(len(vocab[u]) for u in units)
                 mastered_all = pr['mastered'].sum()
                 row['Overall'] = int(round(mastered_all / total * 100)) if total else 0
@@ -225,25 +212,25 @@ def teacher_main():
             else:
                 st.info('No students in this block.')
 
-# --- Navigation Helpers ---
+# Navigation
+
 def logout():
     for k in ['user', 'role', 'unit', 'messages', 'current_index']:
         st.session_state[k] = None
-    st.experimental_rerun()
+
 
 def back_to_menu():
     st.session_state.unit = None
     st.session_state.messages = []
     st.session_state.current_index = 0
-    st.experimental_rerun()
 
-# --- App Control Flow ---
-if st.session_state.role is None:
+# App flow
+if st.session_state['role'] is None:
     show_login()
-elif st.session_state.role == 'student':
-    if st.session_state.unit is None:
+elif st.session_state['role'] == 'student':
+    if st.session_state['unit'] is None:
         student_main()
     else:
-        chat_session(st.session_state.unit)
-elif st.session_state.role == 'teacher':
+        chat_session()
+elif st.session_state['role'] == 'teacher':
     teacher_main()
